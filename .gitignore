@@ -1,0 +1,6 @@
+*.db
+tmp/
+node_modules/
+dist/
+.env
+apps/s3/credentials.env

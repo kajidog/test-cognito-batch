@@ -1,0 +1,79 @@
+type User {
+  id: ID!
+  email: String!
+  name: String!
+  cognitoId: String
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+type JobError {
+  id: ID!
+  rowNumber: Int!
+  name: String!
+  email: String!
+  message: String!
+}
+
+type Job {
+  id: ID!
+  status: JobStatus!
+  totalCount: Int!
+  processedCount: Int!
+  successCount: Int!
+  failureCount: Int!
+  sourceObjectKey: String
+  errors: [JobError!]!
+}
+
+enum ValidationRowStatus {
+  NEW
+  UPDATE
+  ERROR
+}
+
+type FieldError {
+  field: String!
+  message: String!
+}
+
+type RowValidation {
+  rowNumber: Int!
+  status: ValidationRowStatus!
+  errors: [FieldError!]!
+}
+
+type ValidationSummary {
+  newCount: Int!
+  updateCount: Int!
+  errorCount: Int!
+}
+
+type ValidationResult {
+  summary: ValidationSummary!
+  rows: [RowValidation!]!
+}
+
+input UserInput {
+  email: String!
+  name: String!
+  cognitoId: String
+}
+
+type Query {
+  health: String!
+  users: [User!]!
+  userByName(name: String!): User
+  job(id: ID!): Job
+  validateUsers(inputs: [UserInput!]!): ValidationResult!
+}
+
+type Mutation {
+  upsertUsers(inputs: [UserInput!]!): [User!]!
+  startBatchUpsert(inputs: [UserInput!]!): Job!
+}

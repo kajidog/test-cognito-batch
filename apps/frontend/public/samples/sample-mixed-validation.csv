@@ -1,0 +1,7 @@
+email,name,cognitoId
+hanako@example.com,花子,
+invalid-email,太郎,
+mei@example.com,,
+dup1@example.com,美咲,
+dup2@example.com,美咲,
+ok@example.com,結衣,cognito-user-501
