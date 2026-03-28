@@ -15,12 +15,18 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
+// S3Service は監査・デバッグ用の CSV アップロードを担当する。
+// Cognito import 自体は Cognito 側の presigned URL を使うため、
+// この S3 はアプリ独自のバックアップ/確認用途。
+// docker-compose では Garage (S3 互換ストレージ) に接続する。
 type S3Service struct {
 	client    *s3.Client
 	bucket    string
 	keyPrefix string
 }
 
+// NewS3Service は環境変数から S3 の接続情報を読み取り、S3 クライアントを初期化する。
+// 認証情報が見つからない場合は client=nil で返し、UploadCSV 時にエラーとなる。
 func NewS3Service() *S3Service {
 	endpoint := getEnvOrDefault("S3_ENDPOINT", "http://s3:3900")
 	region := getEnvOrDefault("S3_REGION", "garage")
@@ -59,6 +65,8 @@ func NewS3Service() *S3Service {
 	}
 }
 
+// UploadCSV は新規ユーザー一覧を CSV 形式で S3 にアップロードする。
+// オブジェクトキーは "{prefix}/{jobID}/new-users.csv" の形式。
 func (s *S3Service) UploadCSV(ctx context.Context, jobID string, users []BatchUser) (string, error) {
 	if s.client == nil {
 		return "", fmt.Errorf("s3 credentials are not configured")
@@ -68,12 +76,12 @@ func (s *S3Service) UploadCSV(ctx context.Context, jobID string, users []BatchUs
 
 	buffer := &bytes.Buffer{}
 	writer := csv.NewWriter(buffer)
-	if err := writer.Write([]string{"email", "name"}); err != nil {
+	if err := writer.Write([]string{"email", "username", "name"}); err != nil {
 		return "", err
 	}
 
 	for _, user := range users {
-		if err := writer.Write([]string{user.Email, user.Name}); err != nil {
+		if err := writer.Write([]string{user.Email, user.Username, user.Name}); err != nil {
 			return "", err
 		}
 	}
@@ -104,6 +112,9 @@ func getEnvOrDefault(key string, fallback string) string {
 	return value
 }
 
+// loadS3Credentials は S3 の認証情報を以下の優先順で探索する:
+//   1. 環境変数 AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+//   2. ファイルパス候補 (S3_CREDENTIALS_FILE, /s3-config/credentials.env, ../s3/credentials.env 等)
 func loadS3Credentials() (string, string) {
 	accessKey := strings.TrimSpace(os.Getenv("AWS_ACCESS_KEY_ID"))
 	secretKey := strings.TrimSpace(os.Getenv("AWS_SECRET_ACCESS_KEY"))

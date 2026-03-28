@@ -3,4 +3,6 @@ tmp/
 node_modules/
 dist/
 .env
+apps/backend/.gocache/
+apps/backend/.gomodcache/
 apps/s3/credentials.env

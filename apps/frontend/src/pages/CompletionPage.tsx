@@ -12,6 +12,8 @@ const JOB_QUERY = gql`
       successCount
       failureCount
       sourceObjectKey
+      externalJobId
+      statusMessage
       errors {
         id
         rowNumber
@@ -34,6 +36,8 @@ type JobQueryData = {
     successCount: number;
     failureCount: number;
     sourceObjectKey?: string | null;
+    externalJobId?: string | null;
+    statusMessage?: string | null;
     errors: Array<{
       id: string;
       rowNumber: number;
@@ -81,6 +85,9 @@ export function CompletionPage() {
           {job?.sourceObjectKey ? (
             <p className="status-note">S3 Object: {job.sourceObjectKey}</p>
           ) : null}
+          {job?.externalJobId ? (
+            <p className="status-note">Provider Job: {job.externalJobId}</p>
+          ) : null}
         </div>
       </section>
 
@@ -110,6 +117,7 @@ export function CompletionPage() {
                 <strong>{job.failureCount}件</strong>
               </article>
             </div>
+            {job.statusMessage ? <p className="helper-text">{job.statusMessage}</p> : null}
           </section>
 
           <section className="panel">
@@ -127,6 +135,7 @@ export function CompletionPage() {
                       <th>行</th>
                       <th>名前</th>
                       <th>メールアドレス</th>
+                      <th>Username</th>
                       <th>エラー内容</th>
                     </tr>
                   </thead>
@@ -136,6 +145,7 @@ export function CompletionPage() {
                         <td>{jobError.rowNumber || "-"}</td>
                         <td>{jobError.name || "-"}</td>
                         <td>{jobError.email || "-"}</td>
+                        <td>-</td>
                         <td className="cell-error">
                           <div className="cell-stack">
                             <span>{jobError.message}</span>

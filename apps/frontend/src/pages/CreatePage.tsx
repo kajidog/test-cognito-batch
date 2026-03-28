@@ -66,6 +66,7 @@ type ValidateUsersResult = ValidateUsersQueryData["validateUsers"];
 type ValidateUsersQueryVariables = {
   inputs: Array<{
     email: string;
+    username: string;
     name: string;
     cognitoId?: string | null;
   }>;
@@ -84,6 +85,11 @@ const HEADER_ALIASES: Record<string, keyof Omit<ParsedUserRow, "rowNumber">> = {
   mail: "email",
   "メール": "email",
   "メールアドレス": "email",
+  username: "username",
+  user_name: "username",
+  "user id": "username",
+  user_id: "username",
+  "ユーザー名": "username",
   name: "name",
   "名前": "name",
   cognitoid: "cognitoId",
@@ -127,7 +133,7 @@ export function CreatePage() {
 
         const normalizedRows = result.data
           .map((row, index) => normalizeRow(row, index))
-          .filter((row) => row.email || row.name || row.cognitoId);
+          .filter((row) => row.email || row.username || row.name || row.cognitoId);
 
         setRows(normalizedRows);
       },
@@ -150,6 +156,7 @@ export function CreatePage() {
       variables: {
         inputs: rows.map((row) => ({
           email: row.email,
+          username: row.username,
           name: row.name,
           cognitoId: row.cognitoId || null,
         })),
@@ -177,6 +184,7 @@ export function CreatePage() {
       variables: {
         inputs: rows.map((row) => ({
           email: row.email,
+          username: row.username,
           name: row.name,
           cognitoId: row.cognitoId || null,
         })),
@@ -233,8 +241,8 @@ export function CreatePage() {
                 {validationLoading ? "チェック中..." : "チェック"}
               </button>
             </div>
-            <p className="helper-text">
-              メール形式、名前の文字数、CSV 内重複、既存ユーザーとの突合を行います。
+              <p className="helper-text">
+              メール形式、username の形式、名前の文字数、CSV 内重複、既存ユーザーとの突合を行います。
             </p>
             {validationMessage ? <p className="status ok">{validationMessage}</p> : null}
             {validationError ? (
@@ -281,6 +289,7 @@ function normalizeRow(
   const normalized: ParsedUserRow = {
     rowNumber: index + 2,
     email: "",
+    username: "",
     name: "",
     cognitoId: "",
   };

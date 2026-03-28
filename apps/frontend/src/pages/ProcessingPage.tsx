@@ -13,6 +13,8 @@ const JOB_QUERY = gql`
       processedCount
       successCount
       failureCount
+      externalJobId
+      statusMessage
       errors {
         id
         rowNumber
@@ -34,6 +36,8 @@ type JobQueryData = {
     processedCount: number;
     successCount: number;
     failureCount: number;
+    externalJobId?: string | null;
+    statusMessage?: string | null;
     errors: Array<{
       id: string;
       rowNumber: number;
@@ -103,6 +107,7 @@ export function ProcessingPage() {
           <p className={`status ${error ? "error" : "ok"}`}>
             {error ? "取得エラー" : loading && !job ? "読み込み中..." : statusLabel[job?.status ?? "QUEUED"]}
           </p>
+          {job?.externalJobId ? <p className="status-note">Provider Job: {job.externalJobId}</p> : null}
         </div>
       </section>
 
@@ -135,6 +140,7 @@ export function ProcessingPage() {
                 現在 {job.errors.length} 件のエラーがあります。完了画面で詳細を確認できます。
               </p>
             ) : null}
+            {job.statusMessage ? <p className="helper-text">{job.statusMessage}</p> : null}
           </>
         ) : null}
         {error ? <p className="status error">{error.message}</p> : null}

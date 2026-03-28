@@ -28,7 +28,7 @@ export function CsvUploader({
         />
       </label>
       <p className="helper-text">
-        1行目はヘッダーとして扱います。`email`, `name`, `cognitoId` を認識します。
+        1行目はヘッダーとして扱います。`email`, `username`, `name`, `cognitoId` を認識します。
       </p>
       {errorMessage ? <p className="status error">{errorMessage}</p> : null}
     </section>

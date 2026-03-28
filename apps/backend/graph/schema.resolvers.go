@@ -19,6 +19,7 @@ func (r *mutationResolver) UpsertUsers(ctx context.Context, inputs []*model.User
 	for _, input := range inputs {
 		users = append(users, db.User{
 			Email:     input.Email,
+			Username:  input.Username,
 			Name:      input.Name,
 			CognitoID: input.CognitoID,
 		})
@@ -38,6 +39,7 @@ func (r *mutationResolver) StartBatchUpsert(ctx context.Context, inputs []*model
 	for _, input := range inputs {
 		users = append(users, db.User{
 			Email:     input.Email,
+			Username:  input.Username,
 			Name:      input.Name,
 			CognitoID: input.CognitoID,
 		})
@@ -96,6 +98,7 @@ func (r *queryResolver) ValidateUsers(ctx context.Context, inputs []*model.UserI
 	for _, input := range inputs {
 		users = append(users, db.User{
 			Email:     input.Email,
+			Username:  input.Username,
 			Name:      input.Name,
 			CognitoID: input.CognitoID,
 		})

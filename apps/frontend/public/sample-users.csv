@@ -1,5 +1,5 @@
-email,name,cognitoId
-hanako@example.com,花子,
-taro@example.com,太郎,cognito-user-001
-jiro@example.com,次郎,
-yui@example.com,結衣,cognito-user-002
+email,username,name,cognitoId
+hanako@example.com,hanako,花子,
+taro@example.com,taro,太郎,cognito-user-001
+jiro@example.com,jiro,次郎,
+yui@example.com,yui,結衣,cognito-user-002

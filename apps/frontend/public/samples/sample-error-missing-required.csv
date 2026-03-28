@@ -1,4 +1,4 @@
-email,name,cognitoId
-,花子,
-taro@example.com,,
+email,username,name,cognitoId
+,hanako,花子,
+taro@example.com,taro,,
 ,,

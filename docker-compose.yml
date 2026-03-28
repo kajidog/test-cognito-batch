@@ -11,6 +11,8 @@ services:
     depends_on:
       - s3
     environment:
+      COGNITO_MODE: mock
+      COGNITO_IMPORT_POLL_INTERVAL_MS: 2000
       S3_ENDPOINT: http://s3:3900
       S3_REGION: garage
       S3_BUCKET: cognito-csv

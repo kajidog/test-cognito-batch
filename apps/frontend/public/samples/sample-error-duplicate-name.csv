@@ -1,4 +1,4 @@
-email,name,cognitoId
-hanako1@example.com,花子,
-hanako2@example.com,花子,cognito-user-401
-taro@example.com,太郎,
+email,username,name,cognitoId
+hanako1@example.com,hanako-one,花子,
+hanako2@example.com,hanako-two,花子,cognito-user-401
+taro@example.com,taro,太郎,

@@ -18,6 +18,7 @@ func toGraphQLUser(user db.User) *model.User {
 	return &model.User{
 		ID:        user.ID,
 		Email:     user.Email,
+		Username:  user.Username,
 		Name:      user.Name,
 		CognitoID: user.CognitoID,
 	}
@@ -71,6 +72,8 @@ func toGraphQLJob(job db.Job) *model.Job {
 		SuccessCount:    job.SuccessCount,
 		FailureCount:    job.FailureCount,
 		SourceObjectKey: job.SourceObjectKey,
+		ExternalJobID:   job.ExternalJobID,
+		StatusMessage:   job.StatusMessage,
 		Errors:          errors,
 	}
 }

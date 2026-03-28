@@ -1,4 +1,4 @@
-email,name,cognitoId
-aiko@example.com,あ,
-longname@example.com,abcdefghijkl,
-valid@example.com,結衣,
+email,username,name,cognitoId
+aiko@example.com,aiko,あ,
+longname@example.com,longname,abcdefghijkl,
+valid@example.com,yui,結衣,

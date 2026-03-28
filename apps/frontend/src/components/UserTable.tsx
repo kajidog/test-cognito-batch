@@ -1,6 +1,7 @@
 export type ParsedUserRow = {
   rowNumber: number;
   email: string;
+  username: string;
   name: string;
   cognitoId: string;
 };
@@ -68,6 +69,7 @@ export function UserTable({
               <th>行</th>
               <th>判定</th>
               <th>メールアドレス</th>
+              <th>Username</th>
               <th>名前</th>
               <th>Cognito ID</th>
             </tr>
@@ -98,6 +100,9 @@ export function UserTable({
                   </td>
                   <td className={fieldErrors.has("email") ? "cell-error" : undefined}>
                     <CellContent value={row.email} error={fieldErrors.get("email")} />
+                  </td>
+                  <td className={fieldErrors.has("username") ? "cell-error" : undefined}>
+                    <CellContent value={row.username} error={fieldErrors.get("username")} />
                   </td>
                   <td className={fieldErrors.has("name") ? "cell-error" : undefined}>
                     <CellContent value={row.name} error={fieldErrors.get("name")} />

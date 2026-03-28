@@ -1,6 +1,7 @@
 type User {
   id: ID!
   email: String!
+  username: String!
   name: String!
   cognitoId: String
 }
@@ -28,6 +29,8 @@ type Job {
   successCount: Int!
   failureCount: Int!
   sourceObjectKey: String
+  externalJobId: String
+  statusMessage: String
   errors: [JobError!]!
 }
 
@@ -61,6 +64,7 @@ type ValidationResult {
 
 input UserInput {
   email: String!
+  username: String!
   name: String!
   cognitoId: String
 }

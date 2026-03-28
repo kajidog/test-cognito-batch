@@ -1,4 +1,4 @@
-メールアドレス,名前,cognito id
-akira@example.com,明,
-misaki@example.com,美咲,cognito-user-101
-ren@example.com,蓮,
+メールアドレス,ユーザー名,名前,cognito id
+akira@example.com,akira,明,
+misaki@example.com,misaki,美咲,cognito-user-101
+ren@example.com,ren,蓮,

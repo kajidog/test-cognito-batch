@@ -43,11 +43,13 @@ type ComplexityRoot struct {
 
 	Job struct {
 		Errors          func(childComplexity int) int
+		ExternalJobID   func(childComplexity int) int
 		FailureCount    func(childComplexity int) int
 		ID              func(childComplexity int) int
 		ProcessedCount  func(childComplexity int) int
 		SourceObjectKey func(childComplexity int) int
 		Status          func(childComplexity int) int
+		StatusMessage   func(childComplexity int) int
 		SuccessCount    func(childComplexity int) int
 		TotalCount      func(childComplexity int) int
 	}
@@ -84,6 +86,7 @@ type ComplexityRoot struct {
 		Email     func(childComplexity int) int
 		ID        func(childComplexity int) int
 		Name      func(childComplexity int) int
+		Username  func(childComplexity int) int
 	}
 
 	ValidationResult struct {
@@ -143,6 +146,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Job.Errors(childComplexity), true
+	case "Job.externalJobId":
+		if e.ComplexityRoot.Job.ExternalJobID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Job.ExternalJobID(childComplexity), true
 	case "Job.failureCount":
 		if e.ComplexityRoot.Job.FailureCount == nil {
 			break
@@ -173,6 +182,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Job.Status(childComplexity), true
+	case "Job.statusMessage":
+		if e.ComplexityRoot.Job.StatusMessage == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Job.StatusMessage(childComplexity), true
 	case "Job.successCount":
 		if e.ComplexityRoot.Job.SuccessCount == nil {
 			break
@@ -330,6 +345,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.User.Name(childComplexity), true
+	case "User.username":
+		if e.ComplexityRoot.User.Username == nil {
+			break
+		}
+
+		return e.ComplexityRoot.User.Username(childComplexity), true
 
 	case "ValidationResult.rows":
 		if e.ComplexityRoot.ValidationResult.Rows == nil {
@@ -845,6 +866,64 @@ func (ec *executionContext) fieldContext_Job_sourceObjectKey(_ context.Context, 
 	return fc, nil
 }
 
+func (ec *executionContext) _Job_externalJobId(ctx context.Context, field graphql.CollectedField, obj *model.Job) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Job_externalJobId,
+		func(ctx context.Context) (any, error) {
+			return obj.ExternalJobID, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Job_externalJobId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Job",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Job_statusMessage(ctx context.Context, field graphql.CollectedField, obj *model.Job) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Job_statusMessage,
+		func(ctx context.Context) (any, error) {
+			return obj.StatusMessage, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Job_statusMessage(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Job",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Job_errors(ctx context.Context, field graphql.CollectedField, obj *model.Job) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -1060,6 +1139,8 @@ func (ec *executionContext) fieldContext_Mutation_upsertUsers(ctx context.Contex
 				return ec.fieldContext_User_id(ctx, field)
 			case "email":
 				return ec.fieldContext_User_email(ctx, field)
+			case "username":
+				return ec.fieldContext_User_username(ctx, field)
 			case "name":
 				return ec.fieldContext_User_name(ctx, field)
 			case "cognitoId":
@@ -1121,6 +1202,10 @@ func (ec *executionContext) fieldContext_Mutation_startBatchUpsert(ctx context.C
 				return ec.fieldContext_Job_failureCount(ctx, field)
 			case "sourceObjectKey":
 				return ec.fieldContext_Job_sourceObjectKey(ctx, field)
+			case "externalJobId":
+				return ec.fieldContext_Job_externalJobId(ctx, field)
+			case "statusMessage":
+				return ec.fieldContext_Job_statusMessage(ctx, field)
 			case "errors":
 				return ec.fieldContext_Job_errors(ctx, field)
 			}
@@ -1198,6 +1283,8 @@ func (ec *executionContext) fieldContext_Query_users(_ context.Context, field gr
 				return ec.fieldContext_User_id(ctx, field)
 			case "email":
 				return ec.fieldContext_User_email(ctx, field)
+			case "username":
+				return ec.fieldContext_User_username(ctx, field)
 			case "name":
 				return ec.fieldContext_User_name(ctx, field)
 			case "cognitoId":
@@ -1238,6 +1325,8 @@ func (ec *executionContext) fieldContext_Query_userByName(ctx context.Context, f
 				return ec.fieldContext_User_id(ctx, field)
 			case "email":
 				return ec.fieldContext_User_email(ctx, field)
+			case "username":
+				return ec.fieldContext_User_username(ctx, field)
 			case "name":
 				return ec.fieldContext_User_name(ctx, field)
 			case "cognitoId":
@@ -1299,6 +1388,10 @@ func (ec *executionContext) fieldContext_Query_job(ctx context.Context, field gr
 				return ec.fieldContext_Job_failureCount(ctx, field)
 			case "sourceObjectKey":
 				return ec.fieldContext_Job_sourceObjectKey(ctx, field)
+			case "externalJobId":
+				return ec.fieldContext_Job_externalJobId(ctx, field)
+			case "statusMessage":
+				return ec.fieldContext_Job_statusMessage(ctx, field)
 			case "errors":
 				return ec.fieldContext_Job_errors(ctx, field)
 			}
@@ -1613,6 +1706,35 @@ func (ec *executionContext) _User_email(ctx context.Context, field graphql.Colle
 }
 
 func (ec *executionContext) fieldContext_User_email(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "User",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _User_username(ctx context.Context, field graphql.CollectedField, obj *model.User) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_User_username,
+		func(ctx context.Context) (any, error) {
+			return obj.Username, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_User_username(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "User",
 		Field:      field,
@@ -3301,7 +3423,7 @@ func (ec *executionContext) unmarshalInputUserInput(ctx context.Context, obj any
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"email", "name", "cognitoId"}
+	fieldsInOrder := [...]string{"email", "username", "name", "cognitoId"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -3315,6 +3437,13 @@ func (ec *executionContext) unmarshalInputUserInput(ctx context.Context, obj any
 				return it, err
 			}
 			it.Email = data
+		case "username":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("username"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Username = data
 		case "name":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("name"))
 			data, err := ec.unmarshalNString2string(ctx, v)
@@ -3429,6 +3558,10 @@ func (ec *executionContext) _Job(ctx context.Context, sel ast.SelectionSet, obj 
 			}
 		case "sourceObjectKey":
 			out.Values[i] = ec._Job_sourceObjectKey(ctx, field, obj)
+		case "externalJobId":
+			out.Values[i] = ec._Job_externalJobId(ctx, field, obj)
+		case "statusMessage":
+			out.Values[i] = ec._Job_statusMessage(ctx, field, obj)
 		case "errors":
 			out.Values[i] = ec._Job_errors(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -3793,6 +3926,11 @@ func (ec *executionContext) _User(ctx context.Context, sel ast.SelectionSet, obj
 			}
 		case "email":
 			out.Values[i] = ec._User_email(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "username":
+			out.Values[i] = ec._User_username(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}

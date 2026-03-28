@@ -9,31 +9,34 @@ import (
 	"gorm.io/gorm"
 )
 
-var emailPattern = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
+// バリデーション用の正規表現パターン
+var emailPattern = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)    // 簡易的なメールアドレス形式チェック
+var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9._@+-]{3,64}$`)  // Cognito の username 制約に準拠
 
+// ValidationStatus は各行のバリデーション結果を表す。
 type ValidationStatus string
 
 const (
-	ValidationStatusNew    ValidationStatus = "NEW"
-	ValidationStatusUpdate ValidationStatus = "UPDATE"
-	ValidationStatusError  ValidationStatus = "ERROR"
+	ValidationStatusNew    ValidationStatus = "NEW"    // DB に存在しない → Cognito import 対象
+	ValidationStatusUpdate ValidationStatus = "UPDATE" // DB に既存 → ローカル更新のみ
+	ValidationStatusError  ValidationStatus = "ERROR"  // バリデーションエラーあり → スキップ
 )
 
 type ValidationFieldError struct {
-	Field   string
-	Message string
+	Field   string // エラーのあるフィールド名 ("email", "username", "name")
+	Message string // ユーザー向けエラーメッセージ (日本語)
 }
 
 type ValidationRow struct {
-	RowNumber int
+	RowNumber int                    // CSV の行番号 (2始まり)
 	Status    ValidationStatus
-	Errors    []ValidationFieldError
+	Errors    []ValidationFieldError // エラーがなければ空
 }
 
 type ValidationSummary struct {
-	NewCount    int
-	UpdateCount int
-	ErrorCount  int
+	NewCount    int // 新規ユーザー数
+	UpdateCount int // 更新対象ユーザー数
+	ErrorCount  int // エラー行数
 }
 
 type ValidationResult struct {
@@ -49,50 +52,68 @@ func NewValidationService(database *gorm.DB) *ValidationService {
 	return &ValidationService{db: database}
 }
 
+// ValidateUsers は CSV から読み込んだユーザー一覧を一括バリデーションする。
+//
+// 処理の流れ:
+//   1. CSV 内での重複チェック用にカウントマップを構築 (name, username)
+//   2. DB から既存ユーザーを username で一括取得 (UPDATE/NEW の判定に使う)
+//   3. 各行に対してフィールドバリデーション + 重複チェック + 存在チェックを実行
 func (s *ValidationService) ValidateUsers(inputs []db.User) (*ValidationResult, error) {
 	result := &ValidationResult{
 		Rows: make([]ValidationRow, 0, len(inputs)),
 	}
 
+	// --- ステップ 1: CSV 内の重複検出用カウントマップ ---
 	nameCounts := make(map[string]int, len(inputs))
-	names := make([]string, 0, len(inputs))
-	seenNames := make(map[string]struct{}, len(inputs))
+	usernameCounts := make(map[string]int, len(inputs))
+	usernames := make([]string, 0, len(inputs))
+	seenUsernames := make(map[string]struct{}, len(inputs))
 
 	for _, input := range inputs {
 		name := strings.TrimSpace(input.Name)
-		if name == "" {
+		if name != "" {
+			nameCounts[name]++
+		}
+
+		username := strings.TrimSpace(input.Username)
+		if username == "" {
 			continue
 		}
 
-		nameCounts[name]++
-		if _, exists := seenNames[name]; exists {
+		usernameCounts[username]++
+		if _, exists := seenUsernames[username]; exists {
 			continue
 		}
 
-		seenNames[name] = struct{}{}
-		names = append(names, name)
+		seenUsernames[username] = struct{}{}
+		usernames = append(usernames, username)
 	}
 
-	existingUsersByName := make(map[string]db.User, len(names))
-	if len(names) > 0 {
+	// --- ステップ 2: DB から既存ユーザーを一括取得 ---
+	// username が DB に存在すれば UPDATE、存在しなければ NEW と判定する。
+	// username を基準にすることで、Cognito の import/resolve と同じキーで一貫性を保つ。
+	existingUsersByUsername := make(map[string]db.User, len(usernames))
+	if len(usernames) > 0 {
 		var existingUsers []db.User
-		if err := s.db.Where("name IN ?", names).Find(&existingUsers).Error; err != nil {
+		if err := s.db.Where("username IN ?", usernames).Find(&existingUsers).Error; err != nil {
 			return nil, err
 		}
 
 		for _, user := range existingUsers {
-			existingUsersByName[user.Name] = user
+			existingUsersByUsername[user.Username] = user
 		}
 	}
 
+	// --- ステップ 3: 各行のバリデーション ---
 	for index, input := range inputs {
 		email := strings.TrimSpace(input.Email)
+		username := strings.TrimSpace(input.Username)
 		name := strings.TrimSpace(input.Name)
 
 		row := ValidationRow{
 			RowNumber: index + 2,
 			Status:    ValidationStatusNew,
-			Errors:    make([]ValidationFieldError, 0, 3),
+			Errors:    make([]ValidationFieldError, 0, 4),
 		}
 
 		if email == "" {
@@ -105,6 +126,27 @@ func (s *ValidationService) ValidateUsers(inputs []db.User) (*ValidationResult, 
 				Field:   "email",
 				Message: "メールアドレスの形式が不正です",
 			})
+		}
+
+		if username == "" {
+			row.Errors = append(row.Errors, ValidationFieldError{
+				Field:   "username",
+				Message: "username は必須です",
+			})
+		} else {
+			if !usernamePattern.MatchString(username) {
+				row.Errors = append(row.Errors, ValidationFieldError{
+					Field:   "username",
+					Message: "username は英数字と . _ @ + - のみ、3文字以上64文字以下で入力してください",
+				})
+			}
+
+			if usernameCounts[username] > 1 {
+				row.Errors = append(row.Errors, ValidationFieldError{
+					Field:   "username",
+					Message: "CSV内で username が重複しています",
+				})
+			}
 		}
 
 		if name == "" {
@@ -136,7 +178,9 @@ func (s *ValidationService) ValidateUsers(inputs []db.User) (*ValidationResult, 
 			continue
 		}
 
-		if _, exists := existingUsersByName[name]; exists {
+		// UPDATE/NEW の判定軸は username に固定する。
+		// name ではなく username を使うことで、Cognito 側との突合キーを一貫させる。
+		if _, exists := existingUsersByUsername[username]; exists {
 			row.Status = ValidationStatusUpdate
 			result.Summary.UpdateCount++
 		} else {

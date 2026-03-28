@@ -22,6 +22,8 @@ type Job struct {
 	SuccessCount    int         `json:"successCount"`
 	FailureCount    int         `json:"failureCount"`
 	SourceObjectKey *string     `json:"sourceObjectKey,omitempty"`
+	ExternalJobID   *string     `json:"externalJobId,omitempty"`
+	StatusMessage   *string     `json:"statusMessage,omitempty"`
 	Errors          []*JobError `json:"errors"`
 }
 
@@ -48,12 +50,14 @@ type RowValidation struct {
 type User struct {
 	ID        string  `json:"id"`
 	Email     string  `json:"email"`
+	Username  string  `json:"username"`
 	Name      string  `json:"name"`
 	CognitoID *string `json:"cognitoId,omitempty"`
 }
 
 type UserInput struct {
 	Email     string  `json:"email"`
+	Username  string  `json:"username"`
 	Name      string  `json:"name"`
 	CognitoID *string `json:"cognitoId,omitempty"`
 }

@@ -1,4 +1,4 @@
-email,name,cognitoId
-not-an-email,花子,
-taro.example.com,太郎,cognito-user-301
-jiro@,次郎,
+email,username,name,cognitoId
+not-an-email,hanako,花子,
+taro.example.com,taro,太郎,cognito-user-301
+jiro@,jiro,次郎,

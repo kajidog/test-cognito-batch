@@ -1,4 +1,4 @@
-mail,name,cognito_id
-sora@example.com,蒼,
-rio@example.com,莉央,cognito-user-201
-mei@example.com,芽衣,
+mail,username,name,cognito_id
+sora@example.com,sora,蒼,
+rio@example.com,rio,莉央,cognito-user-201
+mei@example.com,mei,芽衣,
