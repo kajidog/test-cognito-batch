@@ -64,7 +64,6 @@ type ComplexityRoot struct {
 
 	Mutation struct {
 		StartBatchUpsert func(childComplexity int, inputs []*model.UserInput) int
-		UpsertUsers      func(childComplexity int, inputs []*model.UserInput) int
 	}
 
 	Query struct {
@@ -102,7 +101,6 @@ type ComplexityRoot struct {
 }
 
 type MutationResolver interface {
-	UpsertUsers(ctx context.Context, inputs []*model.UserInput) ([]*model.User, error)
 	StartBatchUpsert(ctx context.Context, inputs []*model.UserInput) (*model.Job, error)
 }
 type QueryResolver interface {
@@ -243,17 +241,6 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.StartBatchUpsert(childComplexity, args["inputs"].([]*model.UserInput)), true
-	case "Mutation.upsertUsers":
-		if e.ComplexityRoot.Mutation.UpsertUsers == nil {
-			break
-		}
-
-		args, err := ec.field_Mutation_upsertUsers_args(ctx, rawArgs)
-		if err != nil {
-			return 0, false
-		}
-
-		return e.ComplexityRoot.Mutation.UpsertUsers(childComplexity, args["inputs"].([]*model.UserInput)), true
 
 	case "Query.health":
 		if e.ComplexityRoot.Query.Health == nil {
@@ -488,17 +475,6 @@ var parsedSchema = gqlparser.MustLoadSchema(sources...)
 // region    ***************************** args.gotpl *****************************
 
 func (ec *executionContext) field_Mutation_startBatchUpsert_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
-	var err error
-	args := map[string]any{}
-	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "inputs", ec.unmarshalNUserInput2ᚕᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐUserInputᚄ)
-	if err != nil {
-		return nil, err
-	}
-	args["inputs"] = arg0
-	return args, nil
-}
-
-func (ec *executionContext) field_Mutation_upsertUsers_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "inputs", ec.unmarshalNUserInput2ᚕᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐUserInputᚄ)
@@ -1106,59 +1082,6 @@ func (ec *executionContext) fieldContext_JobError_message(_ context.Context, fie
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type String does not have child fields")
 		},
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Mutation_upsertUsers(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		ec.fieldContext_Mutation_upsertUsers,
-		func(ctx context.Context) (any, error) {
-			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().UpsertUsers(ctx, fc.Args["inputs"].([]*model.UserInput))
-		},
-		nil,
-		ec.marshalNUser2ᚕᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐUserᚄ,
-		true,
-		true,
-	)
-}
-
-func (ec *executionContext) fieldContext_Mutation_upsertUsers(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			switch field.Name {
-			case "id":
-				return ec.fieldContext_User_id(ctx, field)
-			case "email":
-				return ec.fieldContext_User_email(ctx, field)
-			case "username":
-				return ec.fieldContext_User_username(ctx, field)
-			case "name":
-				return ec.fieldContext_User_name(ctx, field)
-			case "cognitoId":
-				return ec.fieldContext_User_cognitoId(ctx, field)
-			}
-			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_upsertUsers_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
 	}
 	return fc, nil
 }
@@ -3668,13 +3591,6 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		switch field.Name {
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("Mutation")
-		case "upsertUsers":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_upsertUsers(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
 		case "startBatchUpsert":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_startBatchUpsert(ctx, field)

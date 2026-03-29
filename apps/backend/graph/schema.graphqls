@@ -78,6 +78,5 @@ type Query {
 }
 
 type Mutation {
-  upsertUsers(inputs: [UserInput!]!): [User!]!
   startBatchUpsert(inputs: [UserInput!]!): Job!
 }

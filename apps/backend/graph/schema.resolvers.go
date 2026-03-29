@@ -13,26 +13,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// UpsertUsers is the resolver for the upsertUsers field.
-func (r *mutationResolver) UpsertUsers(ctx context.Context, inputs []*model.UserInput) ([]*model.User, error) {
-	users := make([]db.User, 0, len(inputs))
-	for _, input := range inputs {
-		users = append(users, db.User{
-			Email:     input.Email,
-			Username:  input.Username,
-			Name:      input.Name,
-			CognitoID: input.CognitoID,
-		})
-	}
-
-	savedUsers, err := r.UserService.UpsertUsers(users)
-	if err != nil {
-		return nil, err
-	}
-
-	return toGraphQLUsers(savedUsers), nil
-}
-
 // StartBatchUpsert is the resolver for the startBatchUpsert field.
 func (r *mutationResolver) StartBatchUpsert(ctx context.Context, inputs []*model.UserInput) (*model.Job, error) {
 	users := make([]db.User, 0, len(inputs))
