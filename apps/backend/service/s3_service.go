@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"cognito-batch-backend/model"
 	"context"
 	"encoding/csv"
 	"fmt"
@@ -67,7 +68,7 @@ func NewS3Service() *S3Service {
 
 // UploadCSV は新規ユーザー一覧を CSV 形式で S3 にアップロードする。
 // オブジェクトキーは "{prefix}/{jobID}/new-users.csv" の形式。
-func (s *S3Service) UploadCSV(ctx context.Context, jobID string, users []BatchUser) (string, error) {
+func (s *S3Service) UploadCSV(ctx context.Context, jobID string, users []model.BatchUser) (string, error) {
 	if s.client == nil {
 		return "", fmt.Errorf("s3 credentials are not configured")
 	}
@@ -113,8 +114,8 @@ func getEnvOrDefault(key string, fallback string) string {
 }
 
 // loadS3Credentials は S3 の認証情報を以下の優先順で探索する:
-//   1. 環境変数 AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
-//   2. ファイルパス候補 (S3_CREDENTIALS_FILE, /s3-config/credentials.env, ../s3/credentials.env 等)
+//  1. 環境変数 AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+//  2. ファイルパス候補 (S3_CREDENTIALS_FILE, /s3-config/credentials.env, ../s3/credentials.env 等)
 func loadS3Credentials() (string, string) {
 	accessKey := strings.TrimSpace(os.Getenv("AWS_ACCESS_KEY_ID"))
 	secretKey := strings.TrimSpace(os.Getenv("AWS_SECRET_ACCESS_KEY"))

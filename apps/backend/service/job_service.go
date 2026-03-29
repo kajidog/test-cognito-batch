@@ -17,6 +17,7 @@ package service
 
 import (
 	"cognito-batch-backend/db"
+	"cognito-batch-backend/model"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -31,7 +32,7 @@ import (
 // queuedImportPayload は CognitoImportQueue.Payload に JSON として保存される構造体。
 // Cognito import 完了後に、どのユーザーが対象だったかを復元するために使う。
 type queuedImportPayload struct {
-	Users []BatchUser `json:"users"`
+	Users []model.BatchUser `json:"users"`
 }
 
 // JobService はバッチ処理のオーケストレーター。
@@ -121,9 +122,10 @@ func (s *JobService) GetByID(ctx context.Context, jobID string) (*db.Job, error)
 
 // prepareBatch はバッチ処理のメインロジック。goroutine で実行される。
 // 処理は 3 フェーズに分かれる:
-//   フェーズ 1: バリデーション — 全行を検証し、エラー行 / 更新行 / 新規行に分類
-//   フェーズ 2: 既存ユーザー更新 — DB 上に既に存在するユーザーの情報を更新
-//   フェーズ 3: Cognito import — 新規ユーザーを S3 経由で Cognito にインポート開始
+//
+//	フェーズ 1: バリデーション — 全行を検証し、エラー行 / 更新行 / 新規行に分類
+//	フェーズ 2: 既存ユーザー更新 — DB 上に既に存在するユーザーの情報を更新
+//	フェーズ 3: Cognito import — 新規ユーザーを S3 経由で Cognito にインポート開始
 func (s *JobService) prepareBatch(jobID string, inputs []db.User) {
 	// panic が発生してもジョブを FAILED にして安全に終了させる
 	defer func() {
@@ -151,15 +153,15 @@ func (s *JobService) prepareBatch(jobID string, inputs []db.User) {
 		return
 	}
 
-	updateTargets := make([]BatchUser, 0)  // DB に既存 → ローカル更新のみ
-	newTargets := make([]BatchUser, 0)      // DB に未存在 → Cognito import 対象
+	updateTargets := make([]model.BatchUser, 0) // DB に既存 → ローカル更新のみ
+	newTargets := make([]model.BatchUser, 0)    // DB に未存在 → Cognito import 対象
 	validationErrors := make([]db.JobError, 0)
 
 	// バリデーション結果を 3 カテゴリに分類。
 	// この分類により、即時完了するローカル更新と非同期の Cognito import を分離する。
 	for index, row := range validationResult.Rows {
 		input := inputs[index]
-		batchUser := BatchUser{
+		batchUser := model.BatchUser{
 			RowNumber: row.RowNumber,
 			Email:     strings.TrimSpace(input.Email),
 			Username:  strings.TrimSpace(input.Username),
@@ -375,7 +377,7 @@ func (s *JobService) processImportQueue(queue db.CognitoImportQueue) {
 
 	// Cognito 上で見つかったユーザーをローカル DB に upsert。
 	// 見つからなかったユーザーは unresolved として記録する。
-	unresolved := make([]BatchUser, 0)
+	unresolved := make([]model.BatchUser, 0)
 	for _, user := range payload.Users {
 		resolved, ok := resolvedByUsername[user.Username]
 		if !ok {
@@ -413,7 +415,7 @@ func (s *JobService) processImportQueue(queue db.CognitoImportQueue) {
 
 // enqueueImport は Cognito import 開始後にキューレコードを作成する。
 // このレコードが存在する限り、Worker が定期的にポーリングを行う。
-func (s *JobService) enqueueImport(job *db.Job, providerJobID string, users []BatchUser) error {
+func (s *JobService) enqueueImport(job *db.Job, providerJobID string, users []model.BatchUser) error {
 	payloadBytes, err := json.Marshal(queuedImportPayload{Users: users})
 	if err != nil {
 		return err
@@ -491,7 +493,7 @@ func loadImportPollInterval() time.Duration {
 }
 
 // updateExistingUser は既存ユーザーの email / name を username をキーに上書きする。
-func (s *JobService) updateExistingUser(user BatchUser) error {
+func (s *JobService) updateExistingUser(user model.BatchUser) error {
 	result := s.db.Model(&db.User{}).
 		Where("username = ?", user.Username).
 		Updates(map[string]any{
@@ -511,7 +513,7 @@ func (s *JobService) updateExistingUser(user BatchUser) error {
 // upsertImportedUser は Cognito import 完了後に、resolve されたユーザー情報をローカル DB に反映する。
 // username で既存レコードを検索し、存在すれば更新、なければ新規作成する。
 // CognitoID (sub) がここで初めてローカル DB に記録される。
-func (s *JobService) upsertImportedUser(source BatchUser, resolved ImportedUser) error {
+func (s *JobService) upsertImportedUser(source model.BatchUser, resolved ImportedUser) error {
 	cognitoID := resolved.CognitoID
 	email := resolved.Email
 	if email == "" {
@@ -554,7 +556,7 @@ func (s *JobService) appendJobErrors(errors []db.JobError) error {
 
 // recordBatchFailures は対象ユーザー全員を一括で失敗として記録するヘルパー。
 // S3 アップロード失敗や Cognito import 開始失敗など、バッチ全体に影響するエラーで使う。
-func (s *JobService) recordBatchFailures(job *db.Job, jobID string, users []BatchUser, message string, failJob bool) {
+func (s *JobService) recordBatchFailures(job *db.Job, jobID string, users []model.BatchUser, message string, failJob bool) {
 	errors := buildResolutionErrors(jobID, users, message)
 	if err := s.appendJobErrors(errors); err != nil {
 		s.failJob(jobID, err.Error())
@@ -600,7 +602,7 @@ func (s *JobService) setJobMessage(job *db.Job, message string) {
 	job.StatusMessage = &message
 }
 
-func buildResolutionErrors(jobID string, users []BatchUser, message string) []db.JobError {
+func buildResolutionErrors(jobID string, users []model.BatchUser, message string) []db.JobError {
 	errors := make([]db.JobError, 0, len(users))
 	for _, user := range users {
 		errors = append(errors, db.JobError{
@@ -614,7 +616,7 @@ func buildResolutionErrors(jobID string, users []BatchUser, message string) []db
 	return errors
 }
 
-func usernamesFromBatchUsers(users []BatchUser) []string {
+func usernamesFromBatchUsers(users []model.BatchUser) []string {
 	items := make([]string, 0, len(users))
 	for _, user := range users {
 		items = append(items, user.Username)

@@ -1,4 +1,4 @@
-package service
+package model
 
 // BatchUser は CSV の 1 行分のデータを表す。
 // バリデーション、S3 アップロード、Cognito import の各フェーズで共通して使われる。

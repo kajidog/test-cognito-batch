@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"cognito-batch-backend/model"
 	"context"
 	"encoding/csv"
 	"fmt"
@@ -21,12 +22,12 @@ import (
 // AwsCognitoService は AWS Cognito User Import Job API を使った CognitoService の本番実装。
 //
 // Cognito の import フロー:
-//   1. GetCSVHeader → User Pool のスキーマに合った CSV ヘッダーを取得
-//   2. CreateUserImportJob → import ジョブを作成し、presigned URL を取得
-//   3. presigned URL に CSV を PUT アップロード
-//   4. StartUserImportJob → import 処理を開始
-//   5. DescribeUserImportJob → ポーリングで完了を検知
-//   6. AdminGetUser → import されたユーザーの sub を取得
+//  1. GetCSVHeader → User Pool のスキーマに合った CSV ヘッダーを取得
+//  2. CreateUserImportJob → import ジョブを作成し、presigned URL を取得
+//  3. presigned URL に CSV を PUT アップロード
+//  4. StartUserImportJob → import 処理を開始
+//  5. DescribeUserImportJob → ポーリングで完了を検知
+//  6. AdminGetUser → import されたユーザーの sub を取得
 type AwsCognitoService struct {
 	client                *cognitoidentityprovider.Client
 	userPoolID            string
@@ -75,7 +76,7 @@ func (s *AwsCognitoService) Mode() string {
 
 // StartImport は Cognito User Import Job を作成・開始する。
 // 手順: GetCSVHeader → CSV 構築 → CreateUserImportJob → presigned URL に CSV アップロード → StartUserImportJob
-func (s *AwsCognitoService) StartImport(ctx context.Context, users []BatchUser) (*ImportJobStartResult, error) {
+func (s *AwsCognitoService) StartImport(ctx context.Context, users []model.BatchUser) (*ImportJobStartResult, error) {
 	// User Pool のスキーマから CSV ヘッダー (列順) を取得。
 	// pool 設定に依存する列順をアプリ側でハードコードしないための処理。
 	headersOutput, err := s.client.GetCSVHeader(ctx, &cognitoidentityprovider.GetCSVHeaderInput{
@@ -212,7 +213,7 @@ func (s *AwsCognitoService) uploadImportCSV(ctx context.Context, presignedURL st
 
 // buildCognitoImportCSV は Cognito の User Pool スキーマに合わせた CSV を生成する。
 // headers は GetCSVHeader で取得した列名リスト。アプリが扱わない列は空文字で出力する。
-func buildCognitoImportCSV(headers []string, users []BatchUser) ([]byte, error) {
+func buildCognitoImportCSV(headers []string, users []model.BatchUser) ([]byte, error) {
 	if len(headers) == 0 {
 		return nil, fmt.Errorf("cognito csv header is empty")
 	}

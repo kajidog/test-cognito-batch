@@ -1,6 +1,7 @@
 package service
 
 import (
+	"cognito-batch-backend/model"
 	"context"
 	"strings"
 	"sync"
@@ -12,7 +13,7 @@ import (
 // mockImportJob はモック内でシミュレートされるインポートジョブの状態。
 type mockImportJob struct {
 	createdAt time.Time
-	users     []BatchUser
+	users     []model.BatchUser
 	idsByUser map[string]string // username → 生成した CognitoID (sub)
 }
 
@@ -39,7 +40,7 @@ func (s *MockCognitoService) Mode() string {
 // StartImport はモックのインポートジョブを作成する。
 // 各ユーザーに UUID を事前生成しておき、ResolveImportedUsers で返す。
 // "fail" を含むユーザーには ID を生成しない (= import 失敗扱い)。
-func (s *MockCognitoService) StartImport(_ context.Context, users []BatchUser) (*ImportJobStartResult, error) {
+func (s *MockCognitoService) StartImport(_ context.Context, users []model.BatchUser) (*ImportJobStartResult, error) {
 	providerJobID := "mock-" + uuid.NewString()
 	idsByUser := make(map[string]string, len(users))
 	for _, user := range users {
@@ -52,7 +53,7 @@ func (s *MockCognitoService) StartImport(_ context.Context, users []BatchUser) (
 	s.mu.Lock()
 	s.jobs[providerJobID] = &mockImportJob{
 		createdAt: time.Now(),
-		users:     append([]BatchUser(nil), users...),
+		users:     append([]model.BatchUser(nil), users...),
 		idsByUser: idsByUser,
 	}
 	s.mu.Unlock()
@@ -157,7 +158,7 @@ func (s *MockCognitoService) ResolveImportedUsers(_ context.Context, usernames [
 }
 
 // isMockFailure はテスト用の失敗判定。name, email, username のいずれかに "fail" を含むと失敗。
-func isMockFailure(user BatchUser) bool {
+func isMockFailure(user model.BatchUser) bool {
 	normalized := strings.ToLower(user.Name + " " + user.Email + " " + user.Username)
 	return strings.Contains(normalized, "fail")
 }
