@@ -142,6 +142,33 @@ go run github.com/99designs/gqlgen generate
 - Cognito import には job 作成後に返る presigned URL へ backend が CSV を upload します
 - backend worker が DB queue を監視し、Cognito job 完了後に `username` で再検索して `sub` を `cognito_id` に保存します
 
+## 使用する AWS API リファレンス
+
+本アプリケーションが利用する AWS API の一覧です。
+
+### Amazon S3
+
+| API | 用途 | ドキュメント |
+|-----|------|-------------|
+| PutObject | 監査・デバッグ用 CSV のアップロード (Garage S3 互換ストレージ) | [PutObject - Amazon S3 API Reference](https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html) |
+
+### Amazon Cognito User Pools
+
+| API | 用途 | ドキュメント |
+|-----|------|-------------|
+| GetCSVHeader | User Pool スキーマに対応する CSV ヘッダー (列順) の取得 | [GetCSVHeader - Amazon Cognito User Pools API Reference](https://docs.aws.amazon.com/cognito-user-identity-pools/latest/APIReference/API_GetCSVHeader.html) |
+| CreateUserImportJob | import ジョブの作成と presigned URL の取得 | [CreateUserImportJob - Amazon Cognito User Pools API Reference](https://docs.aws.amazon.com/cognito-user-identity-pools/latest/APIReference/API_CreateUserImportJob.html) |
+| StartUserImportJob | CSV アップロード後の import 処理開始 | [StartUserImportJob - Amazon Cognito User Pools API Reference](https://docs.aws.amazon.com/cognito-user-identity-pools/latest/APIReference/API_StartUserImportJob.html) |
+| DescribeUserImportJob | import ジョブの状態・進捗のポーリング | [DescribeUserImportJob - Amazon Cognito User Pools API Reference](https://docs.aws.amazon.com/cognito-user-identity-pools/latest/APIReference/API_DescribeUserImportJob.html) |
+| AdminGetUser | import 完了後に username から sub (CognitoID) を取得 | [AdminGetUser - Amazon Cognito User Pools API Reference](https://docs.aws.amazon.com/cognito-user-identity-pools/latest/APIReference/API_AdminGetUser.html) |
+
+### AWS SDK
+
+バックエンドは [AWS SDK for Go v2](https://aws.github.io/aws-sdk-go-v2/docs/) を使用しています。
+
+- S3 クライアント: [`github.com/aws/aws-sdk-go-v2/service/s3`](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/s3)
+- Cognito クライアント: [`github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider`](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider)
+
 ## ジョブ進捗の遅延設定
 
 モックの一括登録処理は `JOB_STEP_DELAY_MS` で 1件ごとの待機時間を調整できます。

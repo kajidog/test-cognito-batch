@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -35,37 +34,32 @@ type AwsCognitoService struct {
 	httpClient            *http.Client
 }
 
-// NewAwsCognitoService は環境変数から設定を読み取り、AWS クライアントを初期化する。
-// 必須環境変数: COGNITO_REGION, COGNITO_USER_POOL_ID, COGNITO_CLOUDWATCH_LOGS_ROLE_ARN
-func NewAwsCognitoService() (*AwsCognitoService, error) {
-	region := strings.TrimSpace(os.Getenv("COGNITO_REGION"))
-	userPoolID := strings.TrimSpace(os.Getenv("COGNITO_USER_POOL_ID"))
-	logsRoleArn := strings.TrimSpace(os.Getenv("COGNITO_CLOUDWATCH_LOGS_ROLE_ARN"))
-	if region == "" || userPoolID == "" || logsRoleArn == "" {
-		return nil, fmt.Errorf("cognito env is incomplete")
+// NewAwsCognitoService は CognitoConfig から AWS クライアントを初期化する。
+// Region, UserPoolID, CloudWatchLogsRoleArn は必須。
+func NewAwsCognitoService(cfg CognitoConfig) (*AwsCognitoService, error) {
+	if cfg.Region == "" || cfg.UserPoolID == "" || cfg.CloudWatchLogsRoleArn == "" {
+		return nil, fmt.Errorf("cognito config is incomplete: region, userPoolID, cloudWatchLogsRoleArn are required")
 	}
 
 	loaders := []func(*config.LoadOptions) error{
-		config.WithRegion(region),
+		config.WithRegion(cfg.Region),
 	}
 
-	accessKey := strings.TrimSpace(os.Getenv("AWS_ACCESS_KEY_ID"))
-	secretKey := strings.TrimSpace(os.Getenv("AWS_SECRET_ACCESS_KEY"))
-	if accessKey != "" && secretKey != "" {
+	if cfg.AccessKey != "" && cfg.SecretKey != "" {
 		loaders = append(loaders, config.WithCredentialsProvider(
-			credentials.NewStaticCredentialsProvider(accessKey, secretKey, ""),
+			credentials.NewStaticCredentialsProvider(cfg.AccessKey, cfg.SecretKey, ""),
 		))
 	}
 
-	cfg, err := config.LoadDefaultConfig(context.Background(), loaders...)
+	awsCfg, err := config.LoadDefaultConfig(context.Background(), loaders...)
 	if err != nil {
 		return nil, err
 	}
 
 	return &AwsCognitoService{
-		client:                cognitoidentityprovider.NewFromConfig(cfg),
-		userPoolID:            userPoolID,
-		cloudWatchLogsRoleArn: logsRoleArn,
+		client:                cognitoidentityprovider.NewFromConfig(awsCfg),
+		userPoolID:            cfg.UserPoolID,
+		cloudWatchLogsRoleArn: cfg.CloudWatchLogsRoleArn,
 		httpClient:            &http.Client{Timeout: 30 * time.Second},
 	}, nil
 }

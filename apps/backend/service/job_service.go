@@ -16,13 +16,13 @@
 package service
 
 import (
+	"bytes"
 	"cognito-batch-backend/db"
 	"cognito-batch-backend/model"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
-	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -47,6 +47,7 @@ type JobService struct {
 }
 
 func NewJobService(
+	cfg JobConfig,
 	database *gorm.DB,
 	validationService *ValidationService,
 	s3Service *S3Service,
@@ -57,8 +58,8 @@ func NewJobService(
 		validationService: validationService,
 		s3Service:         s3Service,
 		cognitoService:    cognitoService,
-		processDelay:      loadProcessDelay(),
-		pollInterval:      loadImportPollInterval(),
+		processDelay:      cfg.ProcessDelay,
+		pollInterval:      cfg.PollInterval,
 	}
 }
 
@@ -243,8 +244,13 @@ func (s *JobService) prepareBatch(jobID string, inputs []db.User) {
 	// S3 に CSV を保存 (監査・デバッグ用)。
 	// ※ Cognito import 自体は Cognito が返す presigned URL に直接アップロードするため、
 	//   この S3 オブジェクトは Cognito からは参照されない。
-	objectKey, err := s.s3Service.UploadCSV(context.Background(), jobID, newTargets)
+	csvData, err := buildAuditCSV(newTargets)
 	if err != nil {
+		s.recordBatchFailures(job, jobID, newTargets, fmt.Sprintf("csv build failed: %v", err), true)
+		return
+	}
+	objectKey := s.s3Service.ObjectKey(jobID, "new-users.csv")
+	if err := s.s3Service.Upload(context.Background(), objectKey, csvData, "text/csv"); err != nil {
 		s.recordBatchFailures(job, jobID, newTargets, fmt.Sprintf("s3 upload failed: %v", err), true)
 		return
 	}
@@ -462,34 +468,23 @@ func (s *JobService) sleepStep() {
 	time.Sleep(s.processDelay)
 }
 
-// loadProcessDelay は環境変数 JOB_STEP_DELAY_MS からスリープ時間を読み込む (デフォルト: 1500ms)。
-func loadProcessDelay() time.Duration {
-	raw := strings.TrimSpace(os.Getenv("JOB_STEP_DELAY_MS"))
-	if raw == "" {
-		return 1500 * time.Millisecond
+// buildAuditCSV は新規ユーザー一覧を監査用 CSV に変換する。
+func buildAuditCSV(users []model.BatchUser) ([]byte, error) {
+	buffer := &bytes.Buffer{}
+	writer := csv.NewWriter(buffer)
+	if err := writer.Write([]string{"email", "username", "name"}); err != nil {
+		return nil, err
 	}
-
-	delayMs, err := strconv.Atoi(raw)
-	if err != nil || delayMs < 0 {
-		return 1500 * time.Millisecond
+	for _, user := range users {
+		if err := writer.Write([]string{user.Email, user.Username, user.Name}); err != nil {
+			return nil, err
+		}
 	}
-
-	return time.Duration(delayMs) * time.Millisecond
-}
-
-// loadImportPollInterval は環境変数 COGNITO_IMPORT_POLL_INTERVAL_MS からポーリング間隔を読み込む (デフォルト: 2秒)。
-func loadImportPollInterval() time.Duration {
-	raw := strings.TrimSpace(os.Getenv("COGNITO_IMPORT_POLL_INTERVAL_MS"))
-	if raw == "" {
-		return 2 * time.Second
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return nil, err
 	}
-
-	delayMs, err := strconv.Atoi(raw)
-	if err != nil || delayMs <= 0 {
-		return 2 * time.Second
-	}
-
-	return time.Duration(delayMs) * time.Millisecond
+	return buffer.Bytes(), nil
 }
 
 // updateExistingUser は既存ユーザーの email / name を username をキーに上書きする。

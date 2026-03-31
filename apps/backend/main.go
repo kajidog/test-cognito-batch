@@ -36,12 +36,16 @@ func main() {
 	// --- 2. サービス層の組み立て ---
 	userService := service.NewUserService(database)
 	validationService := service.NewValidationService(database)
-	s3Service := service.NewS3Service()
-	cognitoService, err := newCognitoService()
+
+	s3Cfg := service.LoadS3Config()
+	s3Service := service.NewS3Service(s3Cfg)
+
+	jobCfg := service.LoadJobConfig()
+	cognitoService, err := newCognitoService(jobCfg)
 	if err != nil {
 		log.Fatalf("failed to initialize cognito service: %v", err)
 	}
-	jobService := service.NewJobService(database, validationService, s3Service, cognitoService)
+	jobService := service.NewJobService(jobCfg, database, validationService, s3Service, cognitoService)
 
 	// バックグラウンド Worker を起動。
 	// 定期的に CognitoImportQueue テーブルをポーリングし、
@@ -78,13 +82,16 @@ func main() {
 // newCognitoService は環境変数 COGNITO_MODE に応じて Cognito サービスの実装を切り替える。
 //   - "mock" (またはデフォルト): インメモリのモック実装。ローカル開発・テスト用。
 //   - "aws-import":            実際の AWS Cognito User Import Job API を使う本番実装。
-func newCognitoService() (service.CognitoService, error) {
+func newCognitoService(jobCfg service.JobConfig) (service.CognitoService, error) {
 	mode := strings.TrimSpace(os.Getenv("COGNITO_MODE"))
 	if mode == "" || mode == "mock" {
-		return service.NewMockCognitoService(), nil
+		return service.NewMockCognitoService(service.MockCognitoConfig{
+			StepDelay: jobCfg.ProcessDelay,
+		}), nil
 	}
 	if mode == "aws-import" {
-		return service.NewAwsCognitoService()
+		cogCfg := service.LoadCognitoConfig()
+		return service.NewAwsCognitoService(cogCfg)
 	}
 	return nil, fmt.Errorf("unsupported COGNITO_MODE: %s", mode)
 }
