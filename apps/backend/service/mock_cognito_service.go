@@ -26,10 +26,10 @@ type MockCognitoService struct {
 	stepDelay time.Duration // 1 ユーザーあたりの処理時間 (進捗シミュレーション用)
 }
 
-func NewMockCognitoService() *MockCognitoService {
+func NewMockCognitoService(cfg MockCognitoConfig) *MockCognitoService {
 	return &MockCognitoService{
 		jobs:      make(map[string]*mockImportJob),
-		stepDelay: loadProcessDelay(),
+		stepDelay: cfg.StepDelay,
 	}
 }
 
