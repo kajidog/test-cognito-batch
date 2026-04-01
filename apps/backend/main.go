@@ -16,8 +16,9 @@ import (
 	"strings"
 
 	"cognito-batch-backend/db"
-	"cognito-batch-backend/graph"
 	"cognito-batch-backend/service"
+	"cognito-batch-backend/web/graph"
+	"cognito-batch-backend/worker"
 
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/playground"
@@ -50,7 +51,8 @@ func main() {
 	// バックグラウンド Worker を起動。
 	// 定期的に CognitoImportQueue テーブルをポーリングし、
 	// Cognito 側のインポートジョブの完了を検知してローカル DB を更新する。
-	jobService.StartWorker(context.Background())
+	w := worker.New(jobService, jobCfg.PollInterval)
+	w.Start(context.Background())
 
 	// --- 3. HTTP サーバー設定 ---
 	r := chi.NewRouter()
