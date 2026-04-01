@@ -10,7 +10,7 @@
 //	  ↓
 //	[enqueueImport] CognitoImportQueue にレコード追加
 //	  ↓
-//	[StartWorker → processPendingImports] 定期ポーリングで Cognito ジョブの完了を検知
+//	[Worker → ProcessPendingImports] 定期ポーリングで Cognito ジョブの完了を検知
 //	  ↓
 //	[processImportQueue] 完了検知 → ユーザー resolve → ローカル DB upsert → Job を COMPLETED に
 package service
@@ -61,25 +61,6 @@ func NewJobService(
 		processDelay:      cfg.ProcessDelay,
 		pollInterval:      cfg.PollInterval,
 	}
-}
-
-// StartWorker はバックグラウンドの Worker goroutine を起動する。
-// pollInterval ごとに CognitoImportQueue を確認し、
-// ポーリング時刻に達したキューの Cognito ジョブ状態を問い合わせる。
-func (s *JobService) StartWorker(ctx context.Context) {
-	go func() {
-		ticker := time.NewTicker(s.pollInterval)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				s.processPendingImports()
-			}
-		}
-	}()
 }
 
 // StartBatchUpsert は GraphQL mutation から呼ばれるエントリーポイント。
@@ -280,9 +261,9 @@ func (s *JobService) prepareBatch(jobID string, inputs []db.User) {
 	}
 }
 
-// processPendingImports はポーリング時刻に達したキューを順に処理する。
-// StartWorker の ticker から定期的に呼ばれる。
-func (s *JobService) processPendingImports() {
+// ProcessPendingImports はポーリング時刻に達したキューを順に処理する。
+// worker.Worker から定期的に呼ばれる。
+func (s *JobService) ProcessPendingImports() {
 	queues := make([]db.CognitoImportQueue, 0)
 	if err := s.db.
 		Where("next_poll_at <= ?", time.Now()).

@@ -4,7 +4,7 @@ package graph
 
 import (
 	"bytes"
-	"cognito-batch-backend/graph/model"
+	"cognito-batch-backend/web/graph/model"
 	"context"
 	"embed"
 	"errors"

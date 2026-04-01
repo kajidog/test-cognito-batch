@@ -7,7 +7,7 @@ package graph
 
 import (
 	"cognito-batch-backend/db"
-	"cognito-batch-backend/graph/model"
+	"cognito-batch-backend/web/graph/model"
 	"context"
 
 	"gorm.io/gorm"
