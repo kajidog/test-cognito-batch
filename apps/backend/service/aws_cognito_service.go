@@ -190,7 +190,9 @@ func (s *AwsCognitoService) uploadImportCSV(ctx context.Context, presignedURL st
 	if err != nil {
 		return err
 	}
-	request.Header.Set("Content-Type", "text/csv")
+	// Cognito の user import 用 presigned URL は SSE-KMS ヘッダー付きでの
+	// PUT を前提としている。これが欠けると S3 側で署名不一致になる。
+	request.Header.Set("x-amz-server-side-encryption", "aws:kms")
 
 	response, err := s.httpClient.Do(request)
 	if err != nil {

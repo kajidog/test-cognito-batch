@@ -10,12 +10,13 @@ import (
 
 // S3Config は S3 互換ストレージへの接続設定。
 type S3Config struct {
-	Endpoint  string
-	Region    string
-	Bucket    string
-	KeyPrefix string
-	AccessKey string
-	SecretKey string
+	Endpoint     string
+	Region       string
+	Bucket       string
+	KeyPrefix    string
+	AccessKey    string
+	SecretKey    string
+	SessionToken string
 }
 
 // CognitoConfig は AWS Cognito User Pool への接続設定。
@@ -41,14 +42,15 @@ type JobConfig struct {
 // LoadS3Config は環境変数から S3 接続設定を読み込む。
 // 認証情報は環境変数 → 認証ファイル の優先順で探索する。
 func LoadS3Config() S3Config {
-	accessKey, secretKey := loadS3Credentials()
+	accessKey, secretKey, sessionToken := loadS3Credentials()
 	return S3Config{
-		Endpoint:  getEnvOrDefault("S3_ENDPOINT", "http://s3:3900"),
-		Region:    getEnvOrDefault("S3_REGION", "garage"),
-		Bucket:    getEnvOrDefault("S3_BUCKET", "cognito-csv"),
-		KeyPrefix: strings.Trim(strings.TrimSpace(getEnvOrDefault("S3_KEY_PREFIX", "batch-jobs")), "/"),
-		AccessKey: accessKey,
-		SecretKey: secretKey,
+		Endpoint:     strings.TrimSpace(os.Getenv("S3_ENDPOINT")),
+		Region:       getEnvOrDefault("S3_REGION", "garage"),
+		Bucket:       getEnvOrDefault("S3_BUCKET", "cognito-csv"),
+		KeyPrefix:    strings.Trim(strings.TrimSpace(getEnvOrDefault("S3_KEY_PREFIX", "batch-jobs")), "/"),
+		AccessKey:    accessKey,
+		SecretKey:    secretKey,
+		SessionToken: sessionToken,
 	}
 }
 
@@ -92,13 +94,13 @@ func parseDurationMs(envKey string, defaultMs int) time.Duration {
 }
 
 // loadS3Credentials は S3 の認証情報を以下の優先順で探索する:
-//  1. 環境変数 AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+//  1. 環境変数 AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN
 //  2. ファイルパス候補 (S3_CREDENTIALS_FILE, /s3-config/credentials.env, ../s3/credentials.env 等)
-func loadS3Credentials() (string, string) {
+func loadS3Credentials() (string, string, string) {
 	accessKey := strings.TrimSpace(os.Getenv("AWS_ACCESS_KEY_ID"))
 	secretKey := strings.TrimSpace(os.Getenv("AWS_SECRET_ACCESS_KEY"))
 	if accessKey != "" && secretKey != "" {
-		return accessKey, secretKey
+		return accessKey, secretKey, strings.TrimSpace(os.Getenv("AWS_SESSION_TOKEN"))
 	}
 
 	for _, candidate := range credentialFileCandidates() {
@@ -114,11 +116,11 @@ func loadS3Credentials() (string, string) {
 		accessKey = strings.TrimSpace(values["AWS_ACCESS_KEY_ID"])
 		secretKey = strings.TrimSpace(values["AWS_SECRET_ACCESS_KEY"])
 		if accessKey != "" && secretKey != "" {
-			return accessKey, secretKey
+			return accessKey, secretKey, strings.TrimSpace(values["AWS_SESSION_TOKEN"])
 		}
 	}
 
-	return "", ""
+	return "", "", ""
 }
 
 func credentialFileCandidates() []string {

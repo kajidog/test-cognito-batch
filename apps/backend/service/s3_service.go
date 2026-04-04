@@ -3,7 +3,6 @@ package service
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -24,18 +23,16 @@ type S3Service struct {
 // NewS3Service は S3Config から S3 クライアントを初期化する。
 // 認証情報が空の場合は client=nil で返し、Upload 時にエラーとなる。
 func NewS3Service(cfg S3Config) *S3Service {
-	if cfg.AccessKey == "" || cfg.SecretKey == "" {
-		return &S3Service{
-			bucket:    cfg.Bucket,
-			keyPrefix: cfg.KeyPrefix,
-		}
+	opts := []func(*config.LoadOptions) error{
+		config.WithRegion(cfg.Region),
+	}
+	if cfg.AccessKey != "" && cfg.SecretKey != "" {
+		opts = append(opts, config.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider(cfg.AccessKey, cfg.SecretKey, cfg.SessionToken),
+		))
 	}
 
-	awsCfg, err := config.LoadDefaultConfig(
-		context.Background(),
-		config.WithRegion(cfg.Region),
-		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(cfg.AccessKey, cfg.SecretKey, "")),
-	)
+	awsCfg, err := config.LoadDefaultConfig(context.Background(), opts...)
 	if err != nil {
 		return &S3Service{
 			bucket:    cfg.Bucket,
@@ -44,8 +41,10 @@ func NewS3Service(cfg S3Config) *S3Service {
 	}
 
 	client := s3.NewFromConfig(awsCfg, func(options *s3.Options) {
-		options.BaseEndpoint = aws.String(cfg.Endpoint)
-		options.UsePathStyle = true
+		if cfg.Endpoint != "" {
+			options.BaseEndpoint = aws.String(cfg.Endpoint)
+			options.UsePathStyle = true
+		}
 	})
 
 	return &S3Service{
@@ -63,10 +62,6 @@ func (s *S3Service) ObjectKey(parts ...string) string {
 
 // Upload は指定されたオブジェクトキーにデータをアップロードする。
 func (s *S3Service) Upload(ctx context.Context, objectKey string, data []byte, contentType string) error {
-	if s.client == nil {
-		return fmt.Errorf("s3 credentials are not configured")
-	}
-
 	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:      aws.String(s.bucket),
 		Key:         aws.String(objectKey),

@@ -10,14 +10,8 @@ services:
       - ./apps/s3:/s3-config:ro
     depends_on:
       - s3
-    environment:
-      COGNITO_MODE: mock
-      COGNITO_IMPORT_POLL_INTERVAL_MS: 2000
-      S3_ENDPOINT: http://s3:3900
-      S3_REGION: garage
-      S3_BUCKET: cognito-csv
-      S3_CREDENTIALS_FILE: /s3-config/credentials.env
-      JOB_STEP_DELAY_MS: 1500
+    env_file:
+      - .env  # cp .env.example .env して編集する (git 管理外)
 
   frontend:
     build:
