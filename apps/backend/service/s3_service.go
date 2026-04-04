@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -18,10 +19,11 @@ type S3Service struct {
 	client    *s3.Client
 	bucket    string
 	keyPrefix string
+	initErr   error
 }
 
 // NewS3Service は S3Config から S3 クライアントを初期化する。
-// 認証情報が空の場合は client=nil で返し、Upload 時にエラーとなる。
+// AWS SDK 設定の読込に失敗した場合は client=nil で返し、Upload 時にエラーとなる。
 func NewS3Service(cfg S3Config) *S3Service {
 	opts := []func(*config.LoadOptions) error{
 		config.WithRegion(cfg.Region),
@@ -37,6 +39,7 @@ func NewS3Service(cfg S3Config) *S3Service {
 		return &S3Service{
 			bucket:    cfg.Bucket,
 			keyPrefix: cfg.KeyPrefix,
+			initErr:   err,
 		}
 	}
 
@@ -62,6 +65,13 @@ func (s *S3Service) ObjectKey(parts ...string) string {
 
 // Upload は指定されたオブジェクトキーにデータをアップロードする。
 func (s *S3Service) Upload(ctx context.Context, objectKey string, data []byte, contentType string) error {
+	if s.client == nil {
+		if s.initErr != nil {
+			return fmt.Errorf("s3 client is not configured: %w", s.initErr)
+		}
+		return fmt.Errorf("s3 client is not configured")
+	}
+
 	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:      aws.String(s.bucket),
 		Key:         aws.String(objectKey),
