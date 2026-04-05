@@ -61,7 +61,7 @@ func NewValidationService(userRepo repository.UserRepository, importQueueRepo re
 //  1. CSV 内での重複チェック用にカウントマップを構築 (name, username)
 //  2. DB と実行中ジョブから既存 username を収集
 //  3. 各行に対してフィールドバリデーション + 重複チェック + 存在チェックを実行
-func (s *ValidationService) ValidateUsers(inputs []db.User) (*ValidationResult, error) {
+func (s *ValidationService) ValidateUsers(ctx context.Context, inputs []db.User) (*ValidationResult, error) {
 	result := &ValidationResult{
 		Rows: make([]ValidationRow, 0, len(inputs)),
 	}
@@ -95,7 +95,7 @@ func (s *ValidationService) ValidateUsers(inputs []db.User) (*ValidationResult, 
 	// --- ステップ 2: DB から既存ユーザーを一括取得 ---
 	existingUsersByUsername := make(map[string]db.User, len(usernames))
 	if len(usernames) > 0 {
-		existingUsers, err := s.userRepo.FindByUsernames(context.Background(), usernames)
+		existingUsers, err := s.userRepo.FindByUsernames(ctx, usernames)
 		if err != nil {
 			return nil, err
 		}
@@ -105,7 +105,7 @@ func (s *ValidationService) ValidateUsers(inputs []db.User) (*ValidationResult, 
 		}
 	}
 
-	runningUsernames, err := s.runningJobUsernames()
+	runningUsernames, err := s.runningJobUsernames(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -213,13 +213,13 @@ func (s *ValidationService) ValidateUsers(inputs []db.User) (*ValidationResult, 
 	return result, nil
 }
 
-func (s *ValidationService) runningJobUsernames() (map[string]struct{}, error) {
+func (s *ValidationService) runningJobUsernames(ctx context.Context) (map[string]struct{}, error) {
 	running := make(map[string]struct{})
 	if s.importQueueRepo == nil {
 		return running, nil
 	}
 
-	queues, err := s.importQueueRepo.ListActive(context.Background())
+	queues, err := s.importQueueRepo.ListActive(ctx)
 	if err != nil {
 		return nil, err
 	}

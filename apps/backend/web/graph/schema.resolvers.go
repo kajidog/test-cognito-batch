@@ -50,7 +50,7 @@ func (r *queryResolver) Health(ctx context.Context) (string, error) {
 
 // Users is the resolver for the users field.
 func (r *queryResolver) Users(ctx context.Context) ([]*model.User, error) {
-	users, err := r.UserService.List()
+	users, err := r.UserService.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ func (r *queryResolver) Users(ctx context.Context) ([]*model.User, error) {
 
 // UserByName is the resolver for the userByName field.
 func (r *queryResolver) UserByName(ctx context.Context, name string) (*model.User, error) {
-	user, err := r.UserService.GetByName(name)
+	user, err := r.UserService.GetByName(ctx, name)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +94,7 @@ func (r *queryResolver) ValidateUsers(ctx context.Context, inputs []*model.UserI
 		})
 	}
 
-	result, err := r.ValidationService.ValidateUsers(users)
+	result, err := r.ValidationService.ValidateUsers(ctx, users)
 	if err != nil {
 		return nil, err
 	}

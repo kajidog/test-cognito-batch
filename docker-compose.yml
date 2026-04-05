@@ -13,6 +13,19 @@ services:
     env_file:
       - .env  # cp .env.example .env して編集する (git 管理外)
 
+  worker:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile
+    command: ["go", "run", "./cmd/worker"]
+    volumes:
+      - ./apps/backend:/app
+      - ./apps/s3:/s3-config:ro
+    depends_on:
+      - s3
+    env_file:
+      - .env  # cp .env.example .env して編集する (git 管理外)
+
   frontend:
     build:
       context: ./apps/frontend

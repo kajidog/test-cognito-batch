@@ -1,8 +1,7 @@
-package service
+package cognito
 
 import (
 	"bytes"
-	"cognito-batch-backend/model"
 	"context"
 	"encoding/csv"
 	"fmt"
@@ -11,25 +10,16 @@ import (
 
 	awsclient "cognito-batch-backend/internal/aws"
 	"cognito-batch-backend/internal/config"
+	"cognito-batch-backend/model"
 )
 
-// AwsCognitoService は AWS Cognito User Import Job API を使った CognitoService の本番実装。
-//
-// Cognito の import フロー:
-//  1. GetCSVHeader → User Pool のスキーマに合った CSV ヘッダーを取得
-//  2. CreateUserImportJob → import ジョブを作成し、presigned URL を取得
-//  3. presigned URL に CSV を PUT アップロード
-//  4. StartUserImportJob → import 処理を開始
-//  5. DescribeUserImportJob → ポーリングで完了を検知
-//  6. AdminGetUser → import されたユーザーの sub を取得
-type AwsCognitoService struct {
+// AWSAdapter は AWS Cognito User Import Job API を使った本番実装。
+type AWSAdapter struct {
 	client                *awsclient.CognitoClient
 	cloudWatchLogsRoleArn string
 }
 
-// NewAwsCognitoService は CognitoConfig から AWS クライアントを初期化する。
-// Region, UserPoolID, CloudWatchLogsRoleArn は必須。
-func NewAwsCognitoService(cfg config.CognitoConfig) (*AwsCognitoService, error) {
+func NewAWSAdapter(cfg config.CognitoConfig) (*AWSAdapter, error) {
 	if cfg.CloudWatchLogsRoleArn == "" {
 		return nil, fmt.Errorf("cognito config is incomplete: cloudWatchLogsRoleArn is required")
 	}
@@ -39,18 +29,17 @@ func NewAwsCognitoService(cfg config.CognitoConfig) (*AwsCognitoService, error) 
 		return nil, err
 	}
 
-	return &AwsCognitoService{
+	return &AWSAdapter{
 		client:                client,
 		cloudWatchLogsRoleArn: cfg.CloudWatchLogsRoleArn,
 	}, nil
 }
 
-func (s *AwsCognitoService) Mode() string {
+func (s *AWSAdapter) Mode() string {
 	return "aws-import"
 }
 
-// StartImport は Cognito User Import Job を作成・開始する。
-func (s *AwsCognitoService) StartImport(ctx context.Context, users []model.BatchUser) (*ImportJobStartResult, error) {
+func (s *AWSAdapter) StartImport(ctx context.Context, users []model.BatchUser) (*ImportJobStartResult, error) {
 	headers, err := s.client.GetCSVHeader(ctx)
 	if err != nil {
 		return nil, err
@@ -82,8 +71,7 @@ func (s *AwsCognitoService) StartImport(ctx context.Context, users []model.Batch
 	}, nil
 }
 
-// DescribeImport は Cognito のインポートジョブの現在の状態を取得する。
-func (s *AwsCognitoService) DescribeImport(ctx context.Context, providerJobID string) (*ImportJobStatusResult, error) {
+func (s *AWSAdapter) DescribeImport(ctx context.Context, providerJobID string) (*ImportJobStatusResult, error) {
 	info, err := s.client.DescribeUserImportJob(ctx, providerJobID)
 	if err != nil {
 		return nil, err
@@ -102,11 +90,11 @@ func (s *AwsCognitoService) DescribeImport(ctx context.Context, providerJobID st
 	}, nil
 }
 
-func (s *AwsCognitoService) StopImport(ctx context.Context, providerJobID string) error {
+func (s *AWSAdapter) StopImport(ctx context.Context, providerJobID string) error {
 	return s.client.StopUserImportJob(ctx, providerJobID)
 }
 
-func (s *AwsCognitoService) DeleteUsers(ctx context.Context, usernames []string) error {
+func (s *AWSAdapter) DeleteUsers(ctx context.Context, usernames []string) error {
 	var firstErr error
 	seen := make(map[string]struct{}, len(usernames))
 	for _, username := range usernames {
@@ -125,8 +113,7 @@ func (s *AwsCognitoService) DeleteUsers(ctx context.Context, usernames []string)
 	return firstErr
 }
 
-// ResolveImportedUsers は import 完了後に username でユーザーを個別取得する。
-func (s *AwsCognitoService) ResolveImportedUsers(ctx context.Context, usernames []string) ([]ImportedUser, error) {
+func (s *AWSAdapter) ResolveImportedUsers(ctx context.Context, usernames []string) ([]ImportedUser, error) {
 	results := make([]ImportedUser, 0, len(usernames))
 	for _, username := range usernames {
 		info, err := s.client.AdminGetUser(ctx, username)
@@ -148,7 +135,6 @@ func (s *AwsCognitoService) ResolveImportedUsers(ctx context.Context, usernames 
 	return results, nil
 }
 
-// buildCognitoImportCSV は Cognito の User Pool スキーマに合わせた CSV を生成する。
 func buildCognitoImportCSV(headers []string, users []model.BatchUser) ([]byte, error) {
 	if len(headers) == 0 {
 		return nil, fmt.Errorf("cognito csv header is empty")
@@ -186,7 +172,6 @@ func buildCognitoImportCSV(headers []string, users []model.BatchUser) ([]byte, e
 	return buffer.Bytes(), nil
 }
 
-// mapImportJobStatus は Cognito のステータスをアプリ内部の 4 状態にマッピングする。
 func mapImportJobStatus(status awsclient.ImportJobStatus) ImportJobState {
 	switch status {
 	case awsclient.ImportJobStatusCreated, awsclient.ImportJobStatusPending:

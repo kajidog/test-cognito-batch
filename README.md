@@ -74,6 +74,20 @@ cd apps/backend
 go build ./...
 ```
 
+Web サーバー起動:
+
+```bash
+cd apps/backend
+go run ./cmd/web
+```
+
+Worker 起動:
+
+```bash
+cd apps/backend
+go run ./cmd/worker
+```
+
 GraphQL コード生成:
 
 ```bash
@@ -83,7 +97,7 @@ go run github.com/99designs/gqlgen generate
 
 ## 環境変数のセットアップ
 
-バックエンドは `docker-compose.yml` からルートの `.env` を読み込みます。
+バックエンドの Web と Worker は `docker-compose.yml` からルートの `.env` を読み込みます。
 
 初回セットアップ:
 
@@ -153,10 +167,9 @@ S3_CREDENTIALS_FILE=
 - `AWS_ACCESS_KEY_ID`
 - `AWS_SECRET_ACCESS_KEY`
 - `S3_CREDENTIALS_FILE`
-- `JOB_STEP_DELAY_MS`
 - `COGNITO_IMPORT_POLL_INTERVAL_MS`
 
-`docker-compose.yml` では backend に `S3_CREDENTIALS_FILE=/s3-config/credentials.env` を渡しています。  
+`docker-compose.yml` では `backend` と `worker` に `S3_CREDENTIALS_FILE=/s3-config/credentials.env` を渡しています。  
 一方で、このファイルは Compose 起動だけでは自動生成されません。Garage 連携まで有効にしたい場合は、`apps/s3/credentials.env` を用意するか、`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` を明示的に設定してください。
 
 認証情報がない場合:
@@ -363,7 +376,8 @@ docker compose up --build
 
 - アプリ側の S3 には確認用 CSV を保存します
 - Cognito import には job 作成後に返る presigned URL へ backend が CSV を upload します
-- backend worker が DB queue を監視し、Cognito job 完了後に `username` で再検索して `sub` を `cognito_id` に保存します
+- `backend` コンテナは GraphQL API のみを提供します
+- `worker` コンテナが DB queue を監視し、Cognito job 完了後に `username` で再検索して `sub` を `cognito_id` に保存します
 
 ## トラブルシューティング
 
@@ -422,10 +436,10 @@ docker compose up --build
 - S3 クライアント: [`github.com/aws/aws-sdk-go-v2/service/s3`](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/s3)
 - Cognito クライアント: [`github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider`](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider)
 
-## ジョブ進捗の遅延設定
+## Worker の役割
 
-モックの一括登録処理は `JOB_STEP_DELAY_MS` で 1件ごとの待機時間を調整できます。
+Web と Worker は別プロセスです。
 
-- 例: `JOB_STEP_DELAY_MS=1500`
-- `0` を指定すると待機なし
-- 未指定時は `1500ms`
+- `cmd/web` は GraphQL API とジョブ受付を担当します
+- `cmd/worker` は `CognitoImportQueue` をポーリングしてジョブ完了処理を進めます
+- Docker Compose でも `backend` と `worker` を別サービスで起動します

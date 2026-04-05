@@ -17,11 +17,11 @@ func NewUserService(userRepo repository.UserRepository) *UserService {
 }
 
 // List は全ユーザーを username 昇順で取得する。
-func (s *UserService) List() ([]db.User, error) {
-	return s.userRepo.List(context.Background())
+func (s *UserService) List(ctx context.Context) ([]db.User, error) {
+	return s.userRepo.List(ctx)
 }
 
 // GetByName は name でユーザーを検索する。見つからない場合は nil を返す。
-func (s *UserService) GetByName(name string) (*db.User, error) {
-	return s.userRepo.GetByName(context.Background(), name)
+func (s *UserService) GetByName(ctx context.Context, name string) (*db.User, error) {
+	return s.userRepo.GetByName(ctx, name)
 }

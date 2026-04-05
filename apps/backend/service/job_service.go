@@ -18,6 +18,7 @@ package service
 import (
 	"bytes"
 	"cognito-batch-backend/db"
+	cognitoport "cognito-batch-backend/internal/cognito"
 	"cognito-batch-backend/internal/config"
 	"cognito-batch-backend/internal/repository"
 	"cognito-batch-backend/model"
@@ -41,11 +42,13 @@ type JobService struct {
 	userRepo          repository.UserRepository
 	jobRepo           repository.JobRepository
 	importQueueRepo   repository.ImportQueueRepository
-	validationService *ValidationService
-	s3Service         *S3Service
-	cognitoService    CognitoService
-	processDelay      time.Duration // 各ステップ間のスリープ (デモ用の進捗可視化)
-	pollInterval      time.Duration // Cognito import ジョブのポーリング間隔
+	validationService interface {
+		ValidateUsers(ctx context.Context, inputs []db.User) (*ValidationResult, error)
+	}
+	artifactStore    JobArtifactStore
+	cognitoService   cognitoport.Service
+	pollInterval     time.Duration // Cognito import ジョブのポーリング間隔
+	importPollingSvc *importPollingService
 }
 
 func NewJobService(
@@ -53,20 +56,23 @@ func NewJobService(
 	userRepo repository.UserRepository,
 	jobRepo repository.JobRepository,
 	importQueueRepo repository.ImportQueueRepository,
-	validationService *ValidationService,
-	s3Service *S3Service,
-	cognitoService CognitoService,
+	validationService interface {
+		ValidateUsers(ctx context.Context, inputs []db.User) (*ValidationResult, error)
+	},
+	artifactStore JobArtifactStore,
+	cognitoService cognitoport.Service,
 ) *JobService {
-	return &JobService{
+	service := &JobService{
 		userRepo:          userRepo,
 		jobRepo:           jobRepo,
 		importQueueRepo:   importQueueRepo,
 		validationService: validationService,
-		s3Service:         s3Service,
+		artifactStore:     artifactStore,
 		cognitoService:    cognitoService,
-		processDelay:      cfg.ProcessDelay,
 		pollInterval:      cfg.PollInterval,
 	}
+	service.importPollingSvc = newImportPollingService(userRepo, jobRepo, importQueueRepo, cognitoService, cfg.PollInterval)
+	return service
 }
 
 // StartBatchCreate は GraphQL mutation から呼ばれるエントリーポイント。
@@ -87,7 +93,7 @@ func (s *JobService) StartBatchCreate(ctx context.Context, inputs []db.User) (*d
 
 	// バックグラウンドで prepareBatch を開始。
 	// フロントエンドは返された Job ID を使って進捗をポーリングする。
-	go s.prepareBatch(job.ID, inputs)
+	go s.prepareBatch(context.Background(), job.ID, inputs)
 
 	return job, nil
 }
@@ -103,13 +109,11 @@ func (s *JobService) GetByID(ctx context.Context, jobID string) (*db.Job, error)
 //
 //	フェーズ 1: バリデーション — 全行を検証し、エラー行 / 新規行に分類
 //	フェーズ 2: Cognito import — 新規ユーザーを S3 経由で Cognito にインポート開始
-func (s *JobService) prepareBatch(jobID string, inputs []db.User) {
-	ctx := context.Background()
-
+func (s *JobService) prepareBatch(ctx context.Context, jobID string, inputs []db.User) {
 	// panic が発生してもジョブを FAILED にして安全に終了させる
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			s.failJob(jobID, fmt.Sprintf("panic: %v", recovered))
+			s.failJob(ctx, jobID, fmt.Sprintf("panic: %v", recovered))
 		}
 	}()
 
@@ -117,21 +121,21 @@ func (s *JobService) prepareBatch(jobID string, inputs []db.User) {
 	if err != nil {
 		return
 	}
-	if s.isCanceled(job) {
+	if isCanceled(job) {
 		return
 	}
 
 	// === フェーズ 1: バリデーション ===
 	job.Status = db.JobStatusRunning
-	s.setJobMessage(job, "CSV validation started")
+	setJobMessage(job, "CSV validation started")
 	if err := s.jobRepo.Save(ctx, job); err != nil {
-		s.failJob(jobID, err.Error())
+		s.failJob(ctx, jobID, err.Error())
 		return
 	}
 
-	validationResult, err := s.validationService.ValidateUsers(inputs)
+	validationResult, err := s.validationService.ValidateUsers(ctx, inputs)
 	if err != nil {
-		s.failJob(jobID, err.Error())
+		s.failJob(ctx, jobID, err.Error())
 		return
 	}
 
@@ -164,16 +168,16 @@ func (s *JobService) prepareBatch(jobID string, inputs []db.User) {
 
 	// バリデーションエラーを DB に保存
 	if err := s.jobRepo.CreateErrors(ctx, validationErrors); err != nil {
-		s.failJob(jobID, err.Error())
+		s.failJob(ctx, jobID, err.Error())
 		return
 	}
 
 	// バリデーションエラー分を処理済みとしてカウント
 	job.ProcessedCount = len(validationErrors)
 	job.FailureCount = len(validationErrors)
-	s.setJobMessage(job, "Validation completed")
+	setJobMessage(job, "Validation completed")
 	if err := s.jobRepo.Save(ctx, job); err != nil {
-		s.failJob(jobID, err.Error())
+		s.failJob(ctx, jobID, err.Error())
 		return
 	}
 	if s.refreshAbortState(ctx, jobID) {
@@ -182,10 +186,13 @@ func (s *JobService) prepareBatch(jobID string, inputs []db.User) {
 
 	// === フェーズ 2: 新規ユーザーの Cognito import ===
 	if len(newTargets) == 0 {
-		job.Status = db.JobStatusCompleted
-		s.setJobMessage(job, "No new Cognito users to import")
+		job.Status = db.JobStatusFailed
+		job.ProcessedCount = job.TotalCount
+		job.SuccessCount = 0
+		job.FailureCount = job.TotalCount
+		setJobMessage(job, "Validation failed: no importable users")
 		if err := s.jobRepo.Save(ctx, job); err != nil {
-			s.failJob(jobID, err.Error())
+			s.failJob(ctx, jobID, err.Error())
 		}
 		return
 	}
@@ -196,14 +203,14 @@ func (s *JobService) prepareBatch(jobID string, inputs []db.User) {
 		s.recordBatchFailures(ctx, job, jobID, newTargets, fmt.Sprintf("csv build failed: %v", err), true)
 		return
 	}
-	objectKey := s.s3Service.ObjectKey(jobID, "new-users.csv")
-	if err := s.s3Service.Upload(ctx, objectKey, csvData, "text/csv"); err != nil {
+	objectKey := s.artifactStore.ObjectKey(jobID, "new-users.csv")
+	if err := s.artifactStore.Upload(ctx, objectKey, csvData, "text/csv"); err != nil {
 		s.recordBatchFailures(ctx, job, jobID, newTargets, fmt.Sprintf("s3 upload failed: %v", err), true)
 		return
 	}
 	job.SourceObjectKey = &objectKey
 	if err := s.jobRepo.Save(ctx, job); err != nil {
-		s.failJob(jobID, err.Error())
+		s.failJob(ctx, jobID, err.Error())
 		return
 	}
 	if s.refreshAbortState(ctx, jobID) {
@@ -219,15 +226,15 @@ func (s *JobService) prepareBatch(jobID string, inputs []db.User) {
 	}
 
 	job.ExternalJobID = &startResult.ProviderJobID
-	s.setJobMessage(job, startResult.Message)
+	setJobMessage(job, startResult.Message)
 	if err := s.jobRepo.Save(ctx, job); err != nil {
-		s.failJob(jobID, err.Error())
+		s.failJob(ctx, jobID, err.Error())
 		return
 	}
 
 	// import ジョブをキューに登録。以降は Worker のポーリングに処理を委譲する。
 	if err := s.enqueueImport(ctx, job, startResult.ProviderJobID, newTargets); err != nil {
-		s.failJob(jobID, err.Error())
+		s.failJob(ctx, jobID, err.Error())
 		return
 	}
 }
@@ -257,7 +264,7 @@ func (s *JobService) CancelJob(ctx context.Context, jobID string) (*db.Job, erro
 	}
 
 	job.Status = db.JobStatusCanceled
-	s.setJobMessage(job, "Job canceled")
+	setJobMessage(job, "Job canceled")
 	if err := s.jobRepo.Save(ctx, job); err != nil {
 		return nil, err
 	}
@@ -271,134 +278,8 @@ func (s *JobService) CancelJob(ctx context.Context, jobID string) (*db.Job, erro
 
 // ProcessPendingImports はポーリング時刻に達したキューを順に処理する。
 // worker.Worker から定期的に呼ばれる。
-func (s *JobService) ProcessPendingImports() {
-	ctx := context.Background()
-	queues, err := s.importQueueRepo.FindDue(ctx, time.Now())
-	if err != nil {
-		return
-	}
-
-	for _, queue := range queues {
-		s.processImportQueue(ctx, queue)
-	}
-}
-
-// processImportQueue は個別のキューレコードを処理する。
-func (s *JobService) processImportQueue(ctx context.Context, queue db.CognitoImportQueue) {
-	// キューに保存されている対象ユーザー一覧を復元
-	payload, err := decodePayload(queue.Payload)
-	if err != nil {
-		s.failJob(queue.JobID, err.Error())
-		_ = s.importQueueRepo.Delete(ctx, &queue)
-		return
-	}
-
-	job, err := s.jobRepo.GetByID(ctx, queue.JobID)
-	if err != nil {
-		return
-	}
-	if s.isCanceled(job) {
-		_ = s.cleanupJobArtifacts(ctx, job, &queue, payload)
-		return
-	}
-
-	// Cognito 側のジョブ状態を問い合わせ
-	status, err := s.cognitoService.DescribeImport(ctx, queue.ProviderJobID)
-	if err != nil {
-		// ポーリング失敗時はリトライ。ジョブ自体は RUNNING のまま維持する。
-		s.setJobMessage(job, fmt.Sprintf("poll failed: %v", err))
-		job.Status = db.JobStatusRunning
-		_ = s.jobRepo.Save(ctx, job)
-		queue.AttemptCount++
-		queue.NextPollAt = time.Now().Add(s.pollInterval)
-		_ = s.importQueueRepo.Save(ctx, &queue)
-		return
-	}
-
-	// Cognito の進捗と import 前の処理結果から Job 全体の進捗を算出
-	newUserCount := len(payload.Users)
-	preImportProcessed := job.TotalCount - newUserCount
-	preImportSuccess := preImportProcessed - queue.PreImportFailureCount
-
-	job.ExternalJobID = &queue.ProviderJobID
-	s.setJobMessage(job, status.Message)
-	job.ProcessedCount = preImportProcessed + status.ImportedUsers + status.FailedUsers
-	job.SuccessCount = preImportSuccess + status.ImportedUsers
-	job.FailureCount = queue.PreImportFailureCount + status.FailedUsers
-
-	// まだ進行中 → 次のポーリングをスケジュール
-	if status.State == ImportJobStatePending || status.State == ImportJobStateRunning {
-		job.Status = db.JobStatusRunning
-		_ = s.jobRepo.Save(ctx, job)
-		queue.State = db.ImportQueueStateActive
-		queue.AttemptCount++
-		queue.NextPollAt = time.Now().Add(s.pollInterval)
-		_ = s.importQueueRepo.Save(ctx, &queue)
-		return
-	}
-
-	// Cognito 側で失敗 → 全対象ユーザーを失敗として記録
-	if status.State == ImportJobStateFailed {
-		message := status.Message
-		if message == "" {
-			message = "cognito import failed"
-		}
-		errors := buildResolutionErrors(queue.JobID, payload.Users, message)
-		_ = s.jobRepo.CreateErrors(ctx, errors)
-		job.Status = db.JobStatusFailed
-		job.ProcessedCount = preImportProcessed + newUserCount
-		job.FailureCount = queue.PreImportFailureCount + newUserCount
-		job.SuccessCount = preImportSuccess
-		s.setJobMessage(job, message)
-		_ = s.jobRepo.Save(ctx, job)
-		_ = s.importQueueRepo.Delete(ctx, &queue)
-		return
-	}
-
-	// === Cognito import 完了 → ユーザー解決フェーズ ===
-	resolvedUsers, err := s.cognitoService.ResolveImportedUsers(ctx, usernamesFromBatchUsers(payload.Users))
-	if err != nil {
-		s.failJob(queue.JobID, err.Error())
-		_ = s.importQueueRepo.Delete(ctx, &queue)
-		return
-	}
-
-	resolvedByUsername := make(map[string]ImportedUser, len(resolvedUsers))
-	for _, resolved := range resolvedUsers {
-		resolvedByUsername[resolved.Username] = resolved
-	}
-
-	unresolved := make([]model.BatchUser, 0)
-	for _, user := range payload.Users {
-		resolved, ok := resolvedByUsername[user.Username]
-		if !ok {
-			unresolved = append(unresolved, user)
-			continue
-		}
-		if err := s.createImportedUser(ctx, user, resolved); err != nil {
-			unresolved = append(unresolved, user)
-		}
-	}
-
-	if len(unresolved) > 0 {
-		_ = s.jobRepo.CreateErrors(ctx, buildResolutionErrors(
-			queue.JobID,
-			unresolved,
-			"cognito import completed but user could not be resolved by username",
-		))
-	}
-
-	job.Status = db.JobStatusCompleted
-	job.ProcessedCount = preImportProcessed + newUserCount
-	job.SuccessCount = preImportSuccess + newUserCount - len(unresolved)
-	job.FailureCount = queue.PreImportFailureCount + len(unresolved)
-	if len(unresolved) == 0 {
-		s.setJobMessage(job, "Cognito import completed")
-	} else {
-		s.setJobMessage(job, "Cognito import completed with unresolved users")
-	}
-	_ = s.jobRepo.Save(ctx, job)
-	_ = s.importQueueRepo.Delete(ctx, &queue)
+func (s *JobService) ProcessPendingImports(ctx context.Context) {
+	s.importPollingSvc.ProcessPendingImports(ctx)
 }
 
 // enqueueImport は Cognito import 開始後にキューレコードを作成する。
@@ -428,14 +309,6 @@ func decodePayload(raw string) (*queuedImportPayload, error) {
 	return &payload, nil
 }
 
-// sleepStep はデモ用にステップ間にスリープを挿入する。
-func (s *JobService) sleepStep() {
-	if s.processDelay <= 0 {
-		return
-	}
-	time.Sleep(s.processDelay)
-}
-
 // buildAuditCSV は新規ユーザー一覧を監査用 CSV に変換する。
 func buildAuditCSV(users []model.BatchUser) ([]byte, error) {
 	buffer := &bytes.Buffer{}
@@ -455,39 +328,11 @@ func buildAuditCSV(users []model.BatchUser) ([]byte, error) {
 	return buffer.Bytes(), nil
 }
 
-// createImportedUser は Cognito import 完了後にユーザー情報をローカル DB へ新規作成する。
-func (s *JobService) createImportedUser(ctx context.Context, source model.BatchUser, resolved ImportedUser) error {
-	cognitoID := resolved.CognitoID
-	email := resolved.Email
-	if email == "" {
-		email = source.Email
-	}
-	name := resolved.Name
-	if name == "" {
-		name = source.Name
-	}
-
-	user, err := s.userRepo.GetByUsername(ctx, source.Username)
-	if err != nil {
-		return err
-	}
-	if user != nil {
-		return fmt.Errorf("user already exists")
-	}
-
-	return s.userRepo.Create(ctx, &db.User{
-		Email:     email,
-		Username:  source.Username,
-		Name:      name,
-		CognitoID: &cognitoID,
-	})
-}
-
 // recordBatchFailures は対象ユーザー全員を一括で失敗として記録するヘルパー。
 func (s *JobService) recordBatchFailures(ctx context.Context, job *db.Job, jobID string, users []model.BatchUser, message string, failJob bool) {
 	errors := buildResolutionErrors(jobID, users, message)
 	if err := s.jobRepo.CreateErrors(ctx, errors); err != nil {
-		s.failJob(jobID, err.Error())
+		s.failJob(ctx, jobID, err.Error())
 		return
 	}
 
@@ -498,15 +343,14 @@ func (s *JobService) recordBatchFailures(ctx context.Context, job *db.Job, jobID
 	} else {
 		job.Status = db.JobStatusCompleted
 	}
-	s.setJobMessage(job, message)
+	setJobMessage(job, message)
 	if err := s.jobRepo.Save(ctx, job); err != nil {
-		s.failJob(jobID, err.Error())
+		s.failJob(ctx, jobID, err.Error())
 	}
 }
 
 // failJob はジョブを FAILED 状態にし、エラーメッセージを記録する最終手段。
-func (s *JobService) failJob(jobID string, message string) {
-	ctx := context.Background()
+func (s *JobService) failJob(ctx context.Context, jobID string, message string) {
 	_ = s.jobRepo.CreateErrors(ctx, []db.JobError{{
 		JobID:     jobID,
 		RowNumber: 0,
@@ -525,10 +369,10 @@ func (s *JobService) refreshAbortState(ctx context.Context, jobID string) bool {
 	if err != nil {
 		return false
 	}
-	return s.isCanceled(job)
+	return isCanceled(job)
 }
 
-func (s *JobService) isCanceled(job *db.Job) bool {
+func isCanceled(job *db.Job) bool {
 	return job != nil && job.Status == db.JobStatusCanceled
 }
 
@@ -558,7 +402,7 @@ func (s *JobService) cleanupJobArtifacts(ctx context.Context, job *db.Job, queue
 	}
 
 	if job != nil && job.SourceObjectKey != nil && *job.SourceObjectKey != "" {
-		if err := s.s3Service.Delete(ctx, *job.SourceObjectKey); err != nil {
+		if err := s.artifactStore.Delete(ctx, *job.SourceObjectKey); err != nil {
 			return err
 		}
 	}
@@ -566,7 +410,7 @@ func (s *JobService) cleanupJobArtifacts(ctx context.Context, job *db.Job, queue
 	return nil
 }
 
-func usernamesFromImportedUsers(users []ImportedUser) []string {
+func usernamesFromImportedUsers(users []cognitoport.ImportedUser) []string {
 	usernames := make([]string, 0, len(users))
 	for _, user := range users {
 		if strings.TrimSpace(user.Username) == "" {
@@ -585,7 +429,7 @@ func isIgnorableStopError(err error) bool {
 	return strings.Contains(msg, "not found") || strings.Contains(msg, "expired") || strings.Contains(msg, "stopped")
 }
 
-func (s *JobService) setJobMessage(job *db.Job, message string) {
+func setJobMessage(job *db.Job, message string) {
 	message = strings.TrimSpace(message)
 	if message == "" {
 		job.StatusMessage = nil
