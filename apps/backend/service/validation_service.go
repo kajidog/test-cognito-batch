@@ -2,11 +2,11 @@ package service
 
 import (
 	"cognito-batch-backend/db"
+	"cognito-batch-backend/internal/repository"
+	"context"
 	"regexp"
 	"strings"
 	"unicode/utf8"
-
-	"gorm.io/gorm"
 )
 
 // バリデーション用の正規表現パターン
@@ -45,11 +45,11 @@ type ValidationResult struct {
 }
 
 type ValidationService struct {
-	db *gorm.DB
+	userRepo repository.UserRepository
 }
 
-func NewValidationService(database *gorm.DB) *ValidationService {
-	return &ValidationService{db: database}
+func NewValidationService(userRepo repository.UserRepository) *ValidationService {
+	return &ValidationService{userRepo: userRepo}
 }
 
 // ValidateUsers は CSV から読み込んだユーザー一覧を一括バリデーションする。
@@ -90,12 +90,10 @@ func (s *ValidationService) ValidateUsers(inputs []db.User) (*ValidationResult, 
 	}
 
 	// --- ステップ 2: DB から既存ユーザーを一括取得 ---
-	// username が DB に存在すれば UPDATE、存在しなければ NEW と判定する。
-	// username を基準にすることで、Cognito の import/resolve と同じキーで一貫性を保つ。
 	existingUsersByUsername := make(map[string]db.User, len(usernames))
 	if len(usernames) > 0 {
-		var existingUsers []db.User
-		if err := s.db.Where("username IN ?", usernames).Find(&existingUsers).Error; err != nil {
+		existingUsers, err := s.userRepo.FindByUsernames(context.Background(), usernames)
+		if err != nil {
 			return nil, err
 		}
 
@@ -178,8 +176,6 @@ func (s *ValidationService) ValidateUsers(inputs []db.User) (*ValidationResult, 
 			continue
 		}
 
-		// UPDATE/NEW の判定軸は username に固定する。
-		// name ではなく username を使うことで、Cognito 側との突合キーを一貫させる。
 		if _, exists := existingUsersByUsername[username]; exists {
 			row.Status = ValidationStatusUpdate
 			result.Summary.UpdateCount++

@@ -6,16 +6,11 @@ import (
 	"context"
 	"encoding/csv"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider"
-	cognitotypes "github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider/types"
+	awsclient "cognito-batch-backend/internal/aws"
+	"cognito-batch-backend/internal/config"
 )
 
 // AwsCognitoService は AWS Cognito User Import Job API を使った CognitoService の本番実装。
@@ -28,39 +23,25 @@ import (
 //  5. DescribeUserImportJob → ポーリングで完了を検知
 //  6. AdminGetUser → import されたユーザーの sub を取得
 type AwsCognitoService struct {
-	client                *cognitoidentityprovider.Client
-	userPoolID            string
-	cloudWatchLogsRoleArn string // Cognito が CloudWatch Logs に書き込むための IAM ロール ARN
-	httpClient            *http.Client
+	client                *awsclient.CognitoClient
+	cloudWatchLogsRoleArn string
 }
 
 // NewAwsCognitoService は CognitoConfig から AWS クライアントを初期化する。
 // Region, UserPoolID, CloudWatchLogsRoleArn は必須。
-func NewAwsCognitoService(cfg CognitoConfig) (*AwsCognitoService, error) {
-	if cfg.Region == "" || cfg.UserPoolID == "" || cfg.CloudWatchLogsRoleArn == "" {
-		return nil, fmt.Errorf("cognito config is incomplete: region, userPoolID, cloudWatchLogsRoleArn are required")
+func NewAwsCognitoService(cfg config.CognitoConfig) (*AwsCognitoService, error) {
+	if cfg.CloudWatchLogsRoleArn == "" {
+		return nil, fmt.Errorf("cognito config is incomplete: cloudWatchLogsRoleArn is required")
 	}
 
-	loaders := []func(*config.LoadOptions) error{
-		config.WithRegion(cfg.Region),
-	}
-
-	if cfg.AccessKey != "" && cfg.SecretKey != "" {
-		loaders = append(loaders, config.WithCredentialsProvider(
-			credentials.NewStaticCredentialsProvider(cfg.AccessKey, cfg.SecretKey, ""),
-		))
-	}
-
-	awsCfg, err := config.LoadDefaultConfig(context.Background(), loaders...)
+	client, err := awsclient.NewCognitoClient(cfg)
 	if err != nil {
 		return nil, err
 	}
 
 	return &AwsCognitoService{
-		client:                cognitoidentityprovider.NewFromConfig(awsCfg),
-		userPoolID:            cfg.UserPoolID,
+		client:                client,
 		cloudWatchLogsRoleArn: cfg.CloudWatchLogsRoleArn,
-		httpClient:            &http.Client{Timeout: 30 * time.Second},
 	}, nil
 }
 
@@ -69,146 +50,82 @@ func (s *AwsCognitoService) Mode() string {
 }
 
 // StartImport は Cognito User Import Job を作成・開始する。
-// 手順: GetCSVHeader → CSV 構築 → CreateUserImportJob → presigned URL に CSV アップロード → StartUserImportJob
 func (s *AwsCognitoService) StartImport(ctx context.Context, users []model.BatchUser) (*ImportJobStartResult, error) {
-	// User Pool のスキーマから CSV ヘッダー (列順) を取得。
-	// pool 設定に依存する列順をアプリ側でハードコードしないための処理。
-	headersOutput, err := s.client.GetCSVHeader(ctx, &cognitoidentityprovider.GetCSVHeaderInput{
-		UserPoolId: aws.String(s.userPoolID),
-	})
+	headers, err := s.client.GetCSVHeader(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	body, err := buildCognitoImportCSV(headersOutput.CSVHeader, users)
+	body, err := buildCognitoImportCSV(headers, users)
 	if err != nil {
 		return nil, err
 	}
 
-	createOutput, err := s.client.CreateUserImportJob(ctx, &cognitoidentityprovider.CreateUserImportJobInput{
-		CloudWatchLogsRoleArn: aws.String(s.cloudWatchLogsRoleArn),
-		JobName:               aws.String("batch-import-" + time.Now().Format("20060102-150405")),
-		UserPoolId:            aws.String(s.userPoolID),
-	})
-	if err != nil {
-		return nil, err
-	}
-	if createOutput.UserImportJob == nil || createOutput.UserImportJob.JobId == nil || createOutput.UserImportJob.PreSignedUrl == nil {
-		return nil, fmt.Errorf("cognito import job response is incomplete")
-	}
-
-	// Cognito import は任意の S3 bucket を参照する方式ではなく、
-	// job 作成時に返る presigned URL へ CSV を upload する。
-	if err := s.uploadImportCSV(ctx, *createOutput.UserImportJob.PreSignedUrl, body); err != nil {
-		return nil, err
-	}
-
-	startOutput, err := s.client.StartUserImportJob(ctx, &cognitoidentityprovider.StartUserImportJobInput{
-		JobId:      createOutput.UserImportJob.JobId,
-		UserPoolId: aws.String(s.userPoolID),
-	})
+	jobName := "batch-import-" + time.Now().Format("20060102-150405")
+	jobID, preSignedURL, err := s.client.CreateUserImportJob(ctx, s.cloudWatchLogsRoleArn, jobName)
 	if err != nil {
 		return nil, err
 	}
 
-	message := "cognito import job started"
-	if startOutput.UserImportJob != nil && startOutput.UserImportJob.Status != "" {
-		message = fmt.Sprintf("cognito import %s", startOutput.UserImportJob.Status)
+	if err := s.client.UploadToPreSignedURL(ctx, preSignedURL, body); err != nil {
+		return nil, err
+	}
+
+	message, err := s.client.StartUserImportJob(ctx, jobID)
+	if err != nil {
+		return nil, err
 	}
 
 	return &ImportJobStartResult{
-		ProviderJobID: *createOutput.UserImportJob.JobId,
+		ProviderJobID: jobID,
 		Message:       message,
 	}, nil
 }
 
 // DescribeImport は Cognito のインポートジョブの現在の状態を取得する。
-// Worker のポーリングから呼ばれ、ImportedUsers / FailedUsers / SkippedUsers を返す。
 func (s *AwsCognitoService) DescribeImport(ctx context.Context, providerJobID string) (*ImportJobStatusResult, error) {
-	output, err := s.client.DescribeUserImportJob(ctx, &cognitoidentityprovider.DescribeUserImportJobInput{
-		JobId:      aws.String(providerJobID),
-		UserPoolId: aws.String(s.userPoolID),
-	})
+	info, err := s.client.DescribeUserImportJob(ctx, providerJobID)
 	if err != nil {
 		return nil, err
 	}
-	if output.UserImportJob == nil {
-		return nil, fmt.Errorf("cognito import job not found")
-	}
 
-	status := output.UserImportJob.Status
-	message := strings.TrimSpace(aws.ToString(output.UserImportJob.CompletionMessage))
+	message := strings.TrimSpace(info.CompletionMessage)
 	if message == "" {
-		message = fmt.Sprintf("cognito import %s", status)
+		message = fmt.Sprintf("cognito import %s", info.Status)
 	}
 
 	return &ImportJobStatusResult{
-		State:         mapUserImportJobState(status),
-		ImportedUsers: int(output.UserImportJob.ImportedUsers),
-		FailedUsers:   int(output.UserImportJob.FailedUsers + output.UserImportJob.SkippedUsers),
+		State:         mapImportJobStatus(info.Status),
+		ImportedUsers: int(info.ImportedUsers),
+		FailedUsers:   int(info.FailedUsers + info.SkippedUsers),
 		Message:       message,
 	}, nil
 }
 
 // ResolveImportedUsers は import 完了後に username でユーザーを個別取得する。
-// Cognito の import API は成功行ごとの sub を返さないため、
-// AdminGetUser で 1 ユーザーずつ取得して CognitoID (sub) を収集する。
-// 取得に失敗したユーザーはスキップされ、呼び出し元で "unresolved" として扱われる。
 func (s *AwsCognitoService) ResolveImportedUsers(ctx context.Context, usernames []string) ([]ImportedUser, error) {
 	results := make([]ImportedUser, 0, len(usernames))
 	for _, username := range usernames {
-		output, err := s.client.AdminGetUser(ctx, &cognitoidentityprovider.AdminGetUserInput{
-			UserPoolId: aws.String(s.userPoolID),
-			Username:   aws.String(username),
-		})
+		info, err := s.client.AdminGetUser(ctx, username)
 		if err != nil {
 			continue
 		}
 
-		item := ImportedUser{Username: username}
-		for _, attribute := range output.UserAttributes {
-			switch aws.ToString(attribute.Name) {
-			case "email":
-				item.Email = aws.ToString(attribute.Value)
-			case "name":
-				item.Name = aws.ToString(attribute.Value)
-			case "sub":
-				item.CognitoID = aws.ToString(attribute.Value)
-			}
-		}
-		if item.CognitoID == "" {
+		cognitoID := info.Attributes["sub"]
+		if cognitoID == "" {
 			continue
 		}
-		results = append(results, item)
+		results = append(results, ImportedUser{
+			Username:  username,
+			Email:     info.Attributes["email"],
+			Name:      info.Attributes["name"],
+			CognitoID: cognitoID,
+		})
 	}
 	return results, nil
 }
 
-// uploadImportCSV は Cognito が返した presigned URL に CSV を PUT アップロードする。
-func (s *AwsCognitoService) uploadImportCSV(ctx context.Context, presignedURL string, body []byte) error {
-	request, err := http.NewRequestWithContext(ctx, http.MethodPut, presignedURL, bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	// Cognito の user import 用 presigned URL は SSE-KMS ヘッダー付きでの
-	// PUT を前提としている。これが欠けると S3 側で署名不一致になる。
-	request.Header.Set("x-amz-server-side-encryption", "aws:kms")
-
-	response, err := s.httpClient.Do(request)
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-
-	if response.StatusCode >= http.StatusBadRequest {
-		payload, _ := io.ReadAll(io.LimitReader(response.Body, 2048))
-		return fmt.Errorf("cognito import upload failed: %s", strings.TrimSpace(string(payload)))
-	}
-	return nil
-}
-
 // buildCognitoImportCSV は Cognito の User Pool スキーマに合わせた CSV を生成する。
-// headers は GetCSVHeader で取得した列名リスト。アプリが扱わない列は空文字で出力する。
 func buildCognitoImportCSV(headers []string, users []model.BatchUser) ([]byte, error) {
 	if len(headers) == 0 {
 		return nil, fmt.Errorf("cognito csv header is empty")
@@ -223,8 +140,6 @@ func buildCognitoImportCSV(headers []string, users []model.BatchUser) ([]byte, e
 	for _, user := range users {
 		record := make([]string, len(headers))
 		for index, header := range headers {
-			// pool に定義されているがこのアプリでは扱わない列は空で流す。
-			// 余計なダミー値を入れず、header 契約だけを満たす。
 			switch header {
 			case "cognito:username", "username":
 				record[index] = user.Username
@@ -248,15 +163,14 @@ func buildCognitoImportCSV(headers []string, users []model.BatchUser) ([]byte, e
 	return buffer.Bytes(), nil
 }
 
-// mapUserImportJobState は Cognito のステータスをアプリ内部の 4 状態にマッピングする。
-// Created/Pending → PENDING, InProgress/Stopping → RUNNING, Succeeded → COMPLETED, それ以外 → FAILED
-func mapUserImportJobState(status cognitotypes.UserImportJobStatusType) ImportJobState {
+// mapImportJobStatus は Cognito のステータスをアプリ内部の 4 状態にマッピングする。
+func mapImportJobStatus(status awsclient.ImportJobStatus) ImportJobState {
 	switch status {
-	case cognitotypes.UserImportJobStatusTypeCreated, cognitotypes.UserImportJobStatusTypePending:
+	case awsclient.ImportJobStatusCreated, awsclient.ImportJobStatusPending:
 		return ImportJobStatePending
-	case cognitotypes.UserImportJobStatusTypeInProgress, cognitotypes.UserImportJobStatusTypeStopping:
+	case awsclient.ImportJobStatusInProgress, awsclient.ImportJobStatusStopping:
 		return ImportJobStateRunning
-	case cognitotypes.UserImportJobStatusTypeSucceeded:
+	case awsclient.ImportJobStatusSucceeded:
 		return ImportJobStateCompleted
 	default:
 		return ImportJobStateFailed

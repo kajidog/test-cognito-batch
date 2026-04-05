@@ -1,6 +1,7 @@
 package service
 
 import (
+	"cognito-batch-backend/internal/config"
 	"cognito-batch-backend/model"
 	"context"
 	"strings"
@@ -26,7 +27,7 @@ type MockCognitoService struct {
 	stepDelay time.Duration // 1 ユーザーあたりの処理時間 (進捗シミュレーション用)
 }
 
-func NewMockCognitoService(cfg MockCognitoConfig) *MockCognitoService {
+func NewMockCognitoService(cfg config.MockCognitoConfig) *MockCognitoService {
 	return &MockCognitoService{
 		jobs:      make(map[string]*mockImportJob),
 		stepDelay: cfg.StepDelay,

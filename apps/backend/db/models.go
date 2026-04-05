@@ -72,23 +72,21 @@ const (
 // バックグラウンド Worker (StartWorker) が NextPollAt を見て定期的にポーリングし、
 // Cognito 側のジョブが完了したらローカル DB を更新してキューレコードを削除する。
 //
-// Base*Count フィールドは、Cognito import 開始前の時点での Job の件数を保持する。
-// Worker は Cognito の進捗 (ImportedUsers/FailedUsers) をこのベース値に加算して
-// Job 全体の進捗を算出する。
+// PreImportFailureCount は Cognito import 開始前 (バリデーション・ローカル更新) で
+// 発生した失敗件数を保持する。Worker は Job.TotalCount と Payload のユーザー数から
+// import 前の処理済み件数を逆算し、Cognito の進捗と合算して Job 全体の進捗を算出する。
 type CognitoImportQueue struct {
-	ID                 string           `gorm:"type:text;primaryKey"`
-	JobID              string           `gorm:"type:text;not null;index"`     // 親の Job ID
-	ProviderMode       string           `gorm:"type:text;not null"`           // "mock" or "aws-import"
-	ProviderJobID      string           `gorm:"type:text;not null;index"`     // Cognito 側のジョブ ID
-	State              ImportQueueState `gorm:"type:text;not null"`
-	Payload            string           `gorm:"type:text;not null"`           // JSON: import 対象ユーザー一覧 (完了後の resolve に使う)
-	BaseProcessedCount int              `gorm:"not null"`                     // import 開始前の ProcessedCount
-	BaseSuccessCount   int              `gorm:"not null"`                     // import 開始前の SuccessCount
-	BaseFailureCount   int              `gorm:"not null"`                     // import 開始前の FailureCount
-	NextPollAt         time.Time        `gorm:"not null;index"`              // 次にポーリングする時刻
-	AttemptCount       int              `gorm:"not null"`                     // ポーリング試行回数
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	ID                    string           `gorm:"type:text;primaryKey"`
+	JobID                 string           `gorm:"type:text;not null;index"`     // 親の Job ID
+	ProviderMode          string           `gorm:"type:text;not null"`           // "mock" or "aws-import"
+	ProviderJobID         string           `gorm:"type:text;not null;index"`     // Cognito 側のジョブ ID
+	State                 ImportQueueState `gorm:"type:text;not null"`
+	Payload               string           `gorm:"type:text;not null"`           // JSON: import 対象ユーザー一覧 (完了後の resolve に使う)
+	PreImportFailureCount int              `gorm:"not null"`                     // import 開始前の失敗件数
+	NextPollAt            time.Time        `gorm:"not null;index"`              // 次にポーリングする時刻
+	AttemptCount          int              `gorm:"not null"`                     // ポーリング試行回数
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
 }
 
 func (u *User) BeforeCreate(_ *gorm.DB) error {
