@@ -28,11 +28,6 @@ type CognitoConfig struct {
 	SecretKey             string
 }
 
-// MockCognitoConfig はモック Cognito サービスの設定。
-type MockCognitoConfig struct {
-	StepDelay time.Duration
-}
-
 // JobConfig はバッチジョブ処理の設定。
 type JobConfig struct {
 	ProcessDelay time.Duration

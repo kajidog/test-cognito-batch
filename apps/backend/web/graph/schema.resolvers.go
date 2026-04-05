@@ -13,8 +13,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// StartBatchUpsert is the resolver for the startBatchUpsert field.
-func (r *mutationResolver) StartBatchUpsert(ctx context.Context, inputs []*model.UserInput) (*model.Job, error) {
+// StartBatchCreate is the resolver for the startBatchCreate field.
+func (r *mutationResolver) StartBatchCreate(ctx context.Context, inputs []*model.UserInput) (*model.Job, error) {
 	users := make([]db.User, 0, len(inputs))
 	for _, input := range inputs {
 		users = append(users, db.User{
@@ -25,7 +25,17 @@ func (r *mutationResolver) StartBatchUpsert(ctx context.Context, inputs []*model
 		})
 	}
 
-	job, err := r.JobService.StartBatchUpsert(ctx, users)
+	job, err := r.JobService.StartBatchCreate(ctx, users)
+	if err != nil {
+		return nil, err
+	}
+
+	return toGraphQLJob(*job), nil
+}
+
+// CancelJob is the resolver for the cancelJob field.
+func (r *mutationResolver) CancelJob(ctx context.Context, id string) (*model.Job, error) {
+	job, err := r.JobService.CancelJob(ctx, id)
 	if err != nil {
 		return nil, err
 	}

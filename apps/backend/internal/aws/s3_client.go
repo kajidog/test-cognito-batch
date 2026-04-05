@@ -65,3 +65,19 @@ func (c *S3Client) PutObject(ctx context.Context, bucket, key string, data []byt
 	})
 	return err
 }
+
+// DeleteObject は指定されたバケット/キーのオブジェクトを削除する。
+func (c *S3Client) DeleteObject(ctx context.Context, bucket, key string) error {
+	if c.client == nil {
+		if c.initErr != nil {
+			return fmt.Errorf("s3 client is not configured: %w", c.initErr)
+		}
+		return fmt.Errorf("s3 client is not configured")
+	}
+
+	_, err := c.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	return err
+}

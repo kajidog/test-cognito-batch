@@ -63,7 +63,8 @@ type ComplexityRoot struct {
 	}
 
 	Mutation struct {
-		StartBatchUpsert func(childComplexity int, inputs []*model.UserInput) int
+		CancelJob        func(childComplexity int, id string) int
+		StartBatchCreate func(childComplexity int, inputs []*model.UserInput) int
 	}
 
 	Query struct {
@@ -94,14 +95,14 @@ type ComplexityRoot struct {
 	}
 
 	ValidationSummary struct {
-		ErrorCount  func(childComplexity int) int
-		NewCount    func(childComplexity int) int
-		UpdateCount func(childComplexity int) int
+		ErrorCount func(childComplexity int) int
+		NewCount   func(childComplexity int) int
 	}
 }
 
 type MutationResolver interface {
-	StartBatchUpsert(ctx context.Context, inputs []*model.UserInput) (*model.Job, error)
+	StartBatchCreate(ctx context.Context, inputs []*model.UserInput) (*model.Job, error)
+	CancelJob(ctx context.Context, id string) (*model.Job, error)
 }
 type QueryResolver interface {
 	Health(ctx context.Context) (string, error)
@@ -230,17 +231,28 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.JobError.RowNumber(childComplexity), true
 
-	case "Mutation.startBatchUpsert":
-		if e.ComplexityRoot.Mutation.StartBatchUpsert == nil {
+	case "Mutation.cancelJob":
+		if e.ComplexityRoot.Mutation.CancelJob == nil {
 			break
 		}
 
-		args, err := ec.field_Mutation_startBatchUpsert_args(ctx, rawArgs)
+		args, err := ec.field_Mutation_cancelJob_args(ctx, rawArgs)
 		if err != nil {
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Mutation.StartBatchUpsert(childComplexity, args["inputs"].([]*model.UserInput)), true
+		return e.ComplexityRoot.Mutation.CancelJob(childComplexity, args["id"].(string)), true
+	case "Mutation.startBatchCreate":
+		if e.ComplexityRoot.Mutation.StartBatchCreate == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_startBatchCreate_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.StartBatchCreate(childComplexity, args["inputs"].([]*model.UserInput)), true
 
 	case "Query.health":
 		if e.ComplexityRoot.Query.Health == nil {
@@ -364,12 +376,6 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.ValidationSummary.NewCount(childComplexity), true
-	case "ValidationSummary.updateCount":
-		if e.ComplexityRoot.ValidationSummary.UpdateCount == nil {
-			break
-		}
-
-		return e.ComplexityRoot.ValidationSummary.UpdateCount(childComplexity), true
 
 	}
 	return 0, false
@@ -474,10 +480,21 @@ var parsedSchema = gqlparser.MustLoadSchema(sources...)
 
 // region    ***************************** args.gotpl *****************************
 
-func (ec *executionContext) field_Mutation_startBatchUpsert_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+func (ec *executionContext) field_Mutation_cancelJob_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "inputs", ec.unmarshalNUserInput2ᚕᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐUserInputᚄ)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_startBatchCreate_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "inputs", ec.unmarshalNUserInput2ᚕᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐUserInputᚄ)
 	if err != nil {
 		return nil, err
 	}
@@ -521,7 +538,7 @@ func (ec *executionContext) field_Query_userByName_args(ctx context.Context, raw
 func (ec *executionContext) field_Query_validateUsers_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "inputs", ec.unmarshalNUserInput2ᚕᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐUserInputᚄ)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "inputs", ec.unmarshalNUserInput2ᚕᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐUserInputᚄ)
 	if err != nil {
 		return nil, err
 	}
@@ -678,7 +695,7 @@ func (ec *executionContext) _Job_status(ctx context.Context, field graphql.Colle
 			return obj.Status, nil
 		},
 		nil,
-		ec.marshalNJobStatus2cognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐJobStatus,
+		ec.marshalNJobStatus2cognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐJobStatus,
 		true,
 		true,
 	)
@@ -910,7 +927,7 @@ func (ec *executionContext) _Job_errors(ctx context.Context, field graphql.Colle
 			return obj.Errors, nil
 		},
 		nil,
-		ec.marshalNJobError2ᚕᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐJobErrorᚄ,
+		ec.marshalNJobError2ᚕᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐJobErrorᚄ,
 		true,
 		true,
 	)
@@ -1086,24 +1103,24 @@ func (ec *executionContext) fieldContext_JobError_message(_ context.Context, fie
 	return fc, nil
 }
 
-func (ec *executionContext) _Mutation_startBatchUpsert(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mutation_startBatchCreate(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
 		ec.OperationContext,
 		field,
-		ec.fieldContext_Mutation_startBatchUpsert,
+		ec.fieldContext_Mutation_startBatchCreate,
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().StartBatchUpsert(ctx, fc.Args["inputs"].([]*model.UserInput))
+			return ec.Resolvers.Mutation().StartBatchCreate(ctx, fc.Args["inputs"].([]*model.UserInput))
 		},
 		nil,
-		ec.marshalNJob2ᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐJob,
+		ec.marshalNJob2ᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐJob,
 		true,
 		true,
 	)
 }
 
-func (ec *executionContext) fieldContext_Mutation_startBatchUpsert(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Mutation_startBatchCreate(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Mutation",
 		Field:      field,
@@ -1142,7 +1159,70 @@ func (ec *executionContext) fieldContext_Mutation_startBatchUpsert(ctx context.C
 		}
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_startBatchUpsert_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+	if fc.Args, err = ec.field_Mutation_startBatchCreate_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_cancelJob(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_cancelJob,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().CancelJob(ctx, fc.Args["id"].(string))
+		},
+		nil,
+		ec.marshalNJob2ᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐJob,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_cancelJob(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Job_id(ctx, field)
+			case "status":
+				return ec.fieldContext_Job_status(ctx, field)
+			case "totalCount":
+				return ec.fieldContext_Job_totalCount(ctx, field)
+			case "processedCount":
+				return ec.fieldContext_Job_processedCount(ctx, field)
+			case "successCount":
+				return ec.fieldContext_Job_successCount(ctx, field)
+			case "failureCount":
+				return ec.fieldContext_Job_failureCount(ctx, field)
+			case "sourceObjectKey":
+				return ec.fieldContext_Job_sourceObjectKey(ctx, field)
+			case "externalJobId":
+				return ec.fieldContext_Job_externalJobId(ctx, field)
+			case "statusMessage":
+				return ec.fieldContext_Job_statusMessage(ctx, field)
+			case "errors":
+				return ec.fieldContext_Job_errors(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Job", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_cancelJob_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -1188,7 +1268,7 @@ func (ec *executionContext) _Query_users(ctx context.Context, field graphql.Coll
 			return ec.Resolvers.Query().Users(ctx)
 		},
 		nil,
-		ec.marshalNUser2ᚕᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐUserᚄ,
+		ec.marshalNUser2ᚕᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐUserᚄ,
 		true,
 		true,
 	)
@@ -1230,7 +1310,7 @@ func (ec *executionContext) _Query_userByName(ctx context.Context, field graphql
 			return ec.Resolvers.Query().UserByName(ctx, fc.Args["name"].(string))
 		},
 		nil,
-		ec.marshalOUser2ᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐUser,
+		ec.marshalOUser2ᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐUser,
 		true,
 		false,
 	)
@@ -1283,7 +1363,7 @@ func (ec *executionContext) _Query_job(ctx context.Context, field graphql.Collec
 			return ec.Resolvers.Query().Job(ctx, fc.Args["id"].(string))
 		},
 		nil,
-		ec.marshalOJob2ᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐJob,
+		ec.marshalOJob2ᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐJob,
 		true,
 		false,
 	)
@@ -1346,7 +1426,7 @@ func (ec *executionContext) _Query_validateUsers(ctx context.Context, field grap
 			return ec.Resolvers.Query().ValidateUsers(ctx, fc.Args["inputs"].([]*model.UserInput))
 		},
 		nil,
-		ec.marshalNValidationResult2ᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐValidationResult,
+		ec.marshalNValidationResult2ᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐValidationResult,
 		true,
 		true,
 	)
@@ -1529,7 +1609,7 @@ func (ec *executionContext) _RowValidation_status(ctx context.Context, field gra
 			return obj.Status, nil
 		},
 		nil,
-		ec.marshalNValidationRowStatus2cognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐValidationRowStatus,
+		ec.marshalNValidationRowStatus2cognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐValidationRowStatus,
 		true,
 		true,
 	)
@@ -1558,7 +1638,7 @@ func (ec *executionContext) _RowValidation_errors(ctx context.Context, field gra
 			return obj.Errors, nil
 		},
 		nil,
-		ec.marshalNFieldError2ᚕᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐFieldErrorᚄ,
+		ec.marshalNFieldError2ᚕᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐFieldErrorᚄ,
 		true,
 		true,
 	)
@@ -1738,7 +1818,7 @@ func (ec *executionContext) _ValidationResult_summary(ctx context.Context, field
 			return obj.Summary, nil
 		},
 		nil,
-		ec.marshalNValidationSummary2ᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐValidationSummary,
+		ec.marshalNValidationSummary2ᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐValidationSummary,
 		true,
 		true,
 	)
@@ -1754,8 +1834,6 @@ func (ec *executionContext) fieldContext_ValidationResult_summary(_ context.Cont
 			switch field.Name {
 			case "newCount":
 				return ec.fieldContext_ValidationSummary_newCount(ctx, field)
-			case "updateCount":
-				return ec.fieldContext_ValidationSummary_updateCount(ctx, field)
 			case "errorCount":
 				return ec.fieldContext_ValidationSummary_errorCount(ctx, field)
 			}
@@ -1775,7 +1853,7 @@ func (ec *executionContext) _ValidationResult_rows(ctx context.Context, field gr
 			return obj.Rows, nil
 		},
 		nil,
-		ec.marshalNRowValidation2ᚕᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐRowValidationᚄ,
+		ec.marshalNRowValidation2ᚕᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐRowValidationᚄ,
 		true,
 		true,
 	)
@@ -1819,35 +1897,6 @@ func (ec *executionContext) _ValidationSummary_newCount(ctx context.Context, fie
 }
 
 func (ec *executionContext) fieldContext_ValidationSummary_newCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "ValidationSummary",
-		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type Int does not have child fields")
-		},
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _ValidationSummary_updateCount(ctx context.Context, field graphql.CollectedField, obj *model.ValidationSummary) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		ec.fieldContext_ValidationSummary_updateCount,
-		func(ctx context.Context) (any, error) {
-			return obj.UpdateCount, nil
-		},
-		nil,
-		ec.marshalNInt2int,
-		true,
-		true,
-	)
-}
-
-func (ec *executionContext) fieldContext_ValidationSummary_updateCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "ValidationSummary",
 		Field:      field,
@@ -3591,9 +3640,16 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		switch field.Name {
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("Mutation")
-		case "startBatchUpsert":
+		case "startBatchCreate":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_startBatchUpsert(ctx, field)
+				return ec._Mutation_startBatchCreate(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "cancelJob":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_cancelJob(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -3937,11 +3993,6 @@ func (ec *executionContext) _ValidationSummary(ctx context.Context, sel ast.Sele
 			out.Values[i] = graphql.MarshalString("ValidationSummary")
 		case "newCount":
 			out.Values[i] = ec._ValidationSummary_newCount(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "updateCount":
-			out.Values[i] = ec._ValidationSummary_updateCount(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -4324,11 +4375,11 @@ func (ec *executionContext) marshalNBoolean2bool(ctx context.Context, sel ast.Se
 	return res
 }
 
-func (ec *executionContext) marshalNFieldError2ᚕᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐFieldErrorᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.FieldError) graphql.Marshaler {
+func (ec *executionContext) marshalNFieldError2ᚕᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐFieldErrorᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.FieldError) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
 		fc.Result = &v[i]
-		return ec.marshalNFieldError2ᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐFieldError(ctx, sel, v[i])
+		return ec.marshalNFieldError2ᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐFieldError(ctx, sel, v[i])
 	})
 
 	for _, e := range ret {
@@ -4340,7 +4391,7 @@ func (ec *executionContext) marshalNFieldError2ᚕᚖcognitoᚑbatchᚑbackend�
 	return ret
 }
 
-func (ec *executionContext) marshalNFieldError2ᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐFieldError(ctx context.Context, sel ast.SelectionSet, v *model.FieldError) graphql.Marshaler {
+func (ec *executionContext) marshalNFieldError2ᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐFieldError(ctx context.Context, sel ast.SelectionSet, v *model.FieldError) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -4382,11 +4433,11 @@ func (ec *executionContext) marshalNInt2int(ctx context.Context, sel ast.Selecti
 	return res
 }
 
-func (ec *executionContext) marshalNJob2cognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐJob(ctx context.Context, sel ast.SelectionSet, v model.Job) graphql.Marshaler {
+func (ec *executionContext) marshalNJob2cognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐJob(ctx context.Context, sel ast.SelectionSet, v model.Job) graphql.Marshaler {
 	return ec._Job(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNJob2ᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐJob(ctx context.Context, sel ast.SelectionSet, v *model.Job) graphql.Marshaler {
+func (ec *executionContext) marshalNJob2ᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐJob(ctx context.Context, sel ast.SelectionSet, v *model.Job) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -4396,11 +4447,11 @@ func (ec *executionContext) marshalNJob2ᚖcognitoᚑbatchᚑbackendᚋgraphᚋm
 	return ec._Job(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNJobError2ᚕᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐJobErrorᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.JobError) graphql.Marshaler {
+func (ec *executionContext) marshalNJobError2ᚕᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐJobErrorᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.JobError) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
 		fc.Result = &v[i]
-		return ec.marshalNJobError2ᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐJobError(ctx, sel, v[i])
+		return ec.marshalNJobError2ᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐJobError(ctx, sel, v[i])
 	})
 
 	for _, e := range ret {
@@ -4412,7 +4463,7 @@ func (ec *executionContext) marshalNJobError2ᚕᚖcognitoᚑbatchᚑbackendᚋg
 	return ret
 }
 
-func (ec *executionContext) marshalNJobError2ᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐJobError(ctx context.Context, sel ast.SelectionSet, v *model.JobError) graphql.Marshaler {
+func (ec *executionContext) marshalNJobError2ᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐJobError(ctx context.Context, sel ast.SelectionSet, v *model.JobError) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -4422,21 +4473,21 @@ func (ec *executionContext) marshalNJobError2ᚖcognitoᚑbatchᚑbackendᚋgrap
 	return ec._JobError(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNJobStatus2cognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐJobStatus(ctx context.Context, v any) (model.JobStatus, error) {
+func (ec *executionContext) unmarshalNJobStatus2cognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐJobStatus(ctx context.Context, v any) (model.JobStatus, error) {
 	var res model.JobStatus
 	err := res.UnmarshalGQL(v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNJobStatus2cognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐJobStatus(ctx context.Context, sel ast.SelectionSet, v model.JobStatus) graphql.Marshaler {
+func (ec *executionContext) marshalNJobStatus2cognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐJobStatus(ctx context.Context, sel ast.SelectionSet, v model.JobStatus) graphql.Marshaler {
 	return v
 }
 
-func (ec *executionContext) marshalNRowValidation2ᚕᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐRowValidationᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.RowValidation) graphql.Marshaler {
+func (ec *executionContext) marshalNRowValidation2ᚕᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐRowValidationᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.RowValidation) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
 		fc.Result = &v[i]
-		return ec.marshalNRowValidation2ᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐRowValidation(ctx, sel, v[i])
+		return ec.marshalNRowValidation2ᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐRowValidation(ctx, sel, v[i])
 	})
 
 	for _, e := range ret {
@@ -4448,7 +4499,7 @@ func (ec *executionContext) marshalNRowValidation2ᚕᚖcognitoᚑbatchᚑbacken
 	return ret
 }
 
-func (ec *executionContext) marshalNRowValidation2ᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐRowValidation(ctx context.Context, sel ast.SelectionSet, v *model.RowValidation) graphql.Marshaler {
+func (ec *executionContext) marshalNRowValidation2ᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐRowValidation(ctx context.Context, sel ast.SelectionSet, v *model.RowValidation) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -4474,11 +4525,11 @@ func (ec *executionContext) marshalNString2string(ctx context.Context, sel ast.S
 	return res
 }
 
-func (ec *executionContext) marshalNUser2ᚕᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐUserᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.User) graphql.Marshaler {
+func (ec *executionContext) marshalNUser2ᚕᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐUserᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.User) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
 		fc.Result = &v[i]
-		return ec.marshalNUser2ᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐUser(ctx, sel, v[i])
+		return ec.marshalNUser2ᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐUser(ctx, sel, v[i])
 	})
 
 	for _, e := range ret {
@@ -4490,7 +4541,7 @@ func (ec *executionContext) marshalNUser2ᚕᚖcognitoᚑbatchᚑbackendᚋgraph
 	return ret
 }
 
-func (ec *executionContext) marshalNUser2ᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐUser(ctx context.Context, sel ast.SelectionSet, v *model.User) graphql.Marshaler {
+func (ec *executionContext) marshalNUser2ᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐUser(ctx context.Context, sel ast.SelectionSet, v *model.User) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -4500,14 +4551,14 @@ func (ec *executionContext) marshalNUser2ᚖcognitoᚑbatchᚑbackendᚋgraphᚋ
 	return ec._User(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNUserInput2ᚕᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐUserInputᚄ(ctx context.Context, v any) ([]*model.UserInput, error) {
+func (ec *executionContext) unmarshalNUserInput2ᚕᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐUserInputᚄ(ctx context.Context, v any) ([]*model.UserInput, error) {
 	var vSlice []any
 	vSlice = graphql.CoerceList(v)
 	var err error
 	res := make([]*model.UserInput, len(vSlice))
 	for i := range vSlice {
 		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
-		res[i], err = ec.unmarshalNUserInput2ᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐUserInput(ctx, vSlice[i])
+		res[i], err = ec.unmarshalNUserInput2ᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐUserInput(ctx, vSlice[i])
 		if err != nil {
 			return nil, err
 		}
@@ -4515,16 +4566,16 @@ func (ec *executionContext) unmarshalNUserInput2ᚕᚖcognitoᚑbatchᚑbackend�
 	return res, nil
 }
 
-func (ec *executionContext) unmarshalNUserInput2ᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐUserInput(ctx context.Context, v any) (*model.UserInput, error) {
+func (ec *executionContext) unmarshalNUserInput2ᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐUserInput(ctx context.Context, v any) (*model.UserInput, error) {
 	res, err := ec.unmarshalInputUserInput(ctx, v)
 	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNValidationResult2cognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐValidationResult(ctx context.Context, sel ast.SelectionSet, v model.ValidationResult) graphql.Marshaler {
+func (ec *executionContext) marshalNValidationResult2cognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐValidationResult(ctx context.Context, sel ast.SelectionSet, v model.ValidationResult) graphql.Marshaler {
 	return ec._ValidationResult(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNValidationResult2ᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐValidationResult(ctx context.Context, sel ast.SelectionSet, v *model.ValidationResult) graphql.Marshaler {
+func (ec *executionContext) marshalNValidationResult2ᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐValidationResult(ctx context.Context, sel ast.SelectionSet, v *model.ValidationResult) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -4534,17 +4585,17 @@ func (ec *executionContext) marshalNValidationResult2ᚖcognitoᚑbatchᚑbacken
 	return ec._ValidationResult(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNValidationRowStatus2cognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐValidationRowStatus(ctx context.Context, v any) (model.ValidationRowStatus, error) {
+func (ec *executionContext) unmarshalNValidationRowStatus2cognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐValidationRowStatus(ctx context.Context, v any) (model.ValidationRowStatus, error) {
 	var res model.ValidationRowStatus
 	err := res.UnmarshalGQL(v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNValidationRowStatus2cognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐValidationRowStatus(ctx context.Context, sel ast.SelectionSet, v model.ValidationRowStatus) graphql.Marshaler {
+func (ec *executionContext) marshalNValidationRowStatus2cognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐValidationRowStatus(ctx context.Context, sel ast.SelectionSet, v model.ValidationRowStatus) graphql.Marshaler {
 	return v
 }
 
-func (ec *executionContext) marshalNValidationSummary2ᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐValidationSummary(ctx context.Context, sel ast.SelectionSet, v *model.ValidationSummary) graphql.Marshaler {
+func (ec *executionContext) marshalNValidationSummary2ᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐValidationSummary(ctx context.Context, sel ast.SelectionSet, v *model.ValidationSummary) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
@@ -4725,7 +4776,7 @@ func (ec *executionContext) marshalOBoolean2ᚖbool(ctx context.Context, sel ast
 	return res
 }
 
-func (ec *executionContext) marshalOJob2ᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐJob(ctx context.Context, sel ast.SelectionSet, v *model.Job) graphql.Marshaler {
+func (ec *executionContext) marshalOJob2ᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐJob(ctx context.Context, sel ast.SelectionSet, v *model.Job) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
@@ -4750,7 +4801,7 @@ func (ec *executionContext) marshalOString2ᚖstring(ctx context.Context, sel as
 	return res
 }
 
-func (ec *executionContext) marshalOUser2ᚖcognitoᚑbatchᚑbackendᚋgraphᚋmodelᚐUser(ctx context.Context, sel ast.SelectionSet, v *model.User) graphql.Marshaler {
+func (ec *executionContext) marshalOUser2ᚖcognitoᚑbatchᚑbackendᚋwebᚋgraphᚋmodelᚐUser(ctx context.Context, sel ast.SelectionSet, v *model.User) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}

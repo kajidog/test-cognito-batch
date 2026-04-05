@@ -14,6 +14,7 @@ type UserRepository interface {
 	FindByUsernames(ctx context.Context, usernames []string) ([]db.User, error)
 	GetByUsername(ctx context.Context, username string) (*db.User, error)
 	Create(ctx context.Context, user *db.User) error
+	DeleteByUsernames(ctx context.Context, usernames []string) error
 	UpdateByUsername(ctx context.Context, username string, fields map[string]any) (int64, error)
 	Save(ctx context.Context, user *db.User) error
 }
@@ -32,6 +33,8 @@ type JobRepository interface {
 type ImportQueueRepository interface {
 	Create(ctx context.Context, queue *db.CognitoImportQueue) error
 	FindDue(ctx context.Context, now time.Time) ([]db.CognitoImportQueue, error)
+	FindByJobID(ctx context.Context, jobID string) (*db.CognitoImportQueue, error)
+	ListActive(ctx context.Context) ([]db.CognitoImportQueue, error)
 	Save(ctx context.Context, queue *db.CognitoImportQueue) error
 	Delete(ctx context.Context, queue *db.CognitoImportQueue) error
 }

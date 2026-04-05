@@ -60,6 +60,13 @@ func (r *GormUserRepository) Create(ctx context.Context, user *db.User) error {
 	return r.db.WithContext(ctx).Create(user).Error
 }
 
+func (r *GormUserRepository) DeleteByUsernames(ctx context.Context, usernames []string) error {
+	if len(usernames) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).Where("username IN ?", usernames).Delete(&db.User{}).Error
+}
+
 func (r *GormUserRepository) UpdateByUsername(ctx context.Context, username string, fields map[string]any) (int64, error) {
 	result := r.db.WithContext(ctx).Model(&db.User{}).Where("username = ?", username).Updates(fields)
 	return result.RowsAffected, result.Error
@@ -137,6 +144,28 @@ func (r *GormImportQueueRepository) FindDue(ctx context.Context, now time.Time) 
 	var queues []db.CognitoImportQueue
 	if err := r.db.WithContext(ctx).
 		Where("next_poll_at <= ?", now).
+		Order("created_at asc").
+		Find(&queues).Error; err != nil {
+		return nil, err
+	}
+	return queues, nil
+}
+
+func (r *GormImportQueueRepository) FindByJobID(ctx context.Context, jobID string) (*db.CognitoImportQueue, error) {
+	var queue db.CognitoImportQueue
+	if err := r.db.WithContext(ctx).Where("job_id = ?", jobID).First(&queue).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &queue, nil
+}
+
+func (r *GormImportQueueRepository) ListActive(ctx context.Context) ([]db.CognitoImportQueue, error) {
+	var queues []db.CognitoImportQueue
+	if err := r.db.WithContext(ctx).
+		Where("state IN ?", []db.ImportQueueState{db.ImportQueueStatePending, db.ImportQueueStateActive}).
 		Order("created_at asc").
 		Find(&queues).Error; err != nil {
 		return nil, err

@@ -25,7 +25,7 @@ const JOB_QUERY = gql`
   }
 `;
 
-type JobStatus = "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+type JobStatus = "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELED";
 
 type JobQueryData = {
   job: {
@@ -79,7 +79,7 @@ export function CompletionPage() {
         <div className="status-card">
           <p className="status-label">Job ID</p>
           <p className="status">{jobId}</p>
-          <p className={`status ${job?.status === "FAILED" || error ? "error" : "ok"}`}>
+          <p className={`status ${job?.status === "FAILED" || job?.status === "CANCELED" || error ? "error" : "ok"}`}>
             {loading ? "読み込み中..." : error ? "取得エラー" : statusLabel[job?.status ?? "COMPLETED"]}
           </p>
           {job?.sourceObjectKey ? (
@@ -178,4 +178,5 @@ const statusLabel: Record<JobStatus, string> = {
   RUNNING: "実行中",
   COMPLETED: "完了",
   FAILED: "失敗",
+  CANCELED: "キャンセル済み",
 };

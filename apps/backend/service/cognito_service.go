@@ -19,7 +19,7 @@ const (
 // ImportJobStartResult は StartImport の戻り値。
 // ProviderJobID を保持し、以降の DescribeImport で状態を問い合わせるのに使う。
 type ImportJobStartResult struct {
-	ProviderJobID string // Cognito 側のジョブ ID (mock の場合は "mock-" プレフィクス付き UUID)
+	ProviderJobID string // Cognito 側のジョブ ID
 	Message       string // UI 表示用メッセージ
 }
 
@@ -42,16 +42,17 @@ type ImportedUser struct {
 }
 
 // CognitoService はユーザーインポートの provider インターフェース。
-// 実装は以下の 2 種類:
-//   - MockCognitoService: ローカル開発用。インメモリで即座にシミュレーション。
-//   - AwsCognitoService:  本番用。AWS Cognito User Import Job API を使用。
 type CognitoService interface {
-	// Mode は実装の識別子を返す ("mock" or "aws-import")
+	// Mode は実装の識別子を返す ("aws-import")
 	Mode() string
 	// StartImport は新規ユーザーの Cognito import ジョブを開始する
 	StartImport(ctx context.Context, users []model.BatchUser) (*ImportJobStartResult, error)
 	// DescribeImport は実行中の import ジョブの状態を問い合わせる
 	DescribeImport(ctx context.Context, providerJobID string) (*ImportJobStatusResult, error)
+	// StopImport は実行中の import ジョブ停止を要求する
+	StopImport(ctx context.Context, providerJobID string) error
+	// DeleteUsers は username 指定でユーザーを削除する
+	DeleteUsers(ctx context.Context, usernames []string) error
 	// ResolveImportedUsers は import 完了後に username でユーザーを検索し、sub 等を取得する
 	ResolveImportedUsers(ctx context.Context, usernames []string) ([]ImportedUser, error)
 }

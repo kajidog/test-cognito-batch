@@ -22,7 +22,6 @@ const VALIDATE_USERS_QUERY = gql`
     validateUsers(inputs: $inputs) {
       summary {
         newCount
-        updateCount
         errorCount
       }
       rows {
@@ -37,9 +36,9 @@ const VALIDATE_USERS_QUERY = gql`
   }
 `;
 
-const START_BATCH_UPSERT_MUTATION = gql`
-  mutation StartBatchUpsert($inputs: [UserInput!]!) {
-    startBatchUpsert(inputs: $inputs) {
+const START_BATCH_CREATE_MUTATION = gql`
+  mutation StartBatchCreate($inputs: [UserInput!]!) {
+    startBatchCreate(inputs: $inputs) {
       id
       status
       totalCount
@@ -72,13 +71,13 @@ type ValidateUsersQueryVariables = {
   }>;
 };
 
-type StartBatchUpsertMutationData = {
-  startBatchUpsert: {
+type StartBatchCreateMutationData = {
+  startBatchCreate: {
     id: string;
   };
 };
 
-type StartBatchUpsertMutationVariables = ValidateUsersQueryVariables;
+type StartBatchCreateMutationVariables = ValidateUsersQueryVariables;
 
 const HEADER_ALIASES: Record<string, keyof Omit<ParsedUserRow, "rowNumber">> = {
   email: "email",
@@ -109,10 +108,10 @@ export function CreatePage() {
     useLazyQuery<ValidateUsersQueryData, ValidateUsersQueryVariables>(VALIDATE_USERS_QUERY, {
       fetchPolicy: "no-cache",
     });
-  const [startBatchUpsert, { loading: startLoading, error: startError }] = useMutation<
-    StartBatchUpsertMutationData,
-    StartBatchUpsertMutationVariables
-  >(START_BATCH_UPSERT_MUTATION);
+  const [startBatchCreate, { loading: startLoading, error: startError }] = useMutation<
+    StartBatchCreateMutationData,
+    StartBatchCreateMutationVariables
+  >(START_BATCH_CREATE_MUTATION);
 
   const handleFileSelected = (file: File) => {
     setFileName(file.name);
@@ -171,7 +170,7 @@ export function CreatePage() {
 
     setValidationResult(validateUsers);
     setValidationMessage(
-      `新規 ${summary.newCount} 件 / 更新 ${summary.updateCount} 件 / エラー ${summary.errorCount} 件`,
+      `登録可能 ${summary.newCount} 件 / エラー ${summary.errorCount} 件`,
     );
   };
 
@@ -180,7 +179,7 @@ export function CreatePage() {
       return;
     }
 
-    const result = await startBatchUpsert({
+    const result = await startBatchCreate({
       variables: {
         inputs: rows.map((row) => ({
           email: row.email,
@@ -191,7 +190,7 @@ export function CreatePage() {
       },
     });
 
-    const jobId = result.data?.startBatchUpsert.id;
+    const jobId = result.data?.startBatchCreate.id;
     if (!jobId) {
       return;
     }
@@ -242,7 +241,7 @@ export function CreatePage() {
               </button>
             </div>
               <p className="helper-text">
-              メール形式、username の形式、名前の文字数、CSV 内重複、既存ユーザーとの突合を行います。
+              メール形式、username の形式、名前の文字数、CSV 内重複、既存ユーザーと実行中ジョブとの重複を確認します。
             </p>
             {validationMessage ? <p className="status ok">{validationMessage}</p> : null}
             {validationError ? (

@@ -26,7 +26,7 @@ const JOB_QUERY = gql`
   }
 `;
 
-type JobStatus = "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+type JobStatus = "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELED";
 
 type JobQueryData = {
   job: {
@@ -64,7 +64,8 @@ export function ProcessingPage() {
   });
 
   const job = data?.job;
-  const isTerminal = job?.status === "COMPLETED" || job?.status === "FAILED";
+  const isTerminal =
+    job?.status === "COMPLETED" || job?.status === "FAILED" || job?.status === "CANCELED";
 
   useEffect(() => {
     if (jobId && isTerminal) {
@@ -154,4 +155,5 @@ const statusLabel: Record<JobStatus, string> = {
   RUNNING: "実行中",
   COMPLETED: "完了",
   FAILED: "失敗",
+  CANCELED: "キャンセル済み",
 };

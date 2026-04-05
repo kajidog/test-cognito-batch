@@ -144,6 +144,15 @@ func (c *CognitoClient) StartUserImportJob(ctx context.Context, jobID string) (s
 	return message, nil
 }
 
+// StopUserImportJob は import ジョブの停止を要求する。
+func (c *CognitoClient) StopUserImportJob(ctx context.Context, jobID string) error {
+	_, err := c.client.StopUserImportJob(ctx, &cognitoidentityprovider.StopUserImportJobInput{
+		JobId:      aws.String(jobID),
+		UserPoolId: aws.String(c.userPoolID),
+	})
+	return err
+}
+
 // DescribeUserImportJob は import ジョブの現在の状態を取得する。
 func (c *CognitoClient) DescribeUserImportJob(ctx context.Context, jobID string) (*ImportJobInfo, error) {
 	output, err := c.client.DescribeUserImportJob(ctx, &cognitoidentityprovider.DescribeUserImportJobInput{
@@ -185,4 +194,13 @@ func (c *CognitoClient) AdminGetUser(ctx context.Context, username string) (*Use
 		Username:   username,
 		Attributes: attrs,
 	}, nil
+}
+
+// AdminDeleteUser は username 指定でユーザーを削除する。
+func (c *CognitoClient) AdminDeleteUser(ctx context.Context, username string) error {
+	_, err := c.client.AdminDeleteUser(ctx, &cognitoidentityprovider.AdminDeleteUserInput{
+		UserPoolId: aws.String(c.userPoolID),
+		Username:   aws.String(username),
+	})
+	return err
 }

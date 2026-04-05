@@ -6,7 +6,7 @@ export type ParsedUserRow = {
   cognitoId: string;
 };
 
-export type ValidationStatus = "NEW" | "UPDATE" | "ERROR";
+export type ValidationStatus = "NEW" | "ERROR";
 
 export type FieldValidationError = {
   field: string;
@@ -21,7 +21,6 @@ export type RowValidation = {
 
 export type ValidationSummary = {
   newCount: number;
-  updateCount: number;
   errorCount: number;
 };
 
@@ -49,12 +48,8 @@ export function UserTable({
       {summary ? (
         <div className="summary-grid">
           <article className="summary-card summary-card-new">
-            <span>新規</span>
+            <span>登録可能</span>
             <strong>{summary.newCount}件</strong>
-          </article>
-          <article className="summary-card summary-card-update">
-            <span>更新</span>
-            <strong>{summary.updateCount}件</strong>
           </article>
           <article className="summary-card summary-card-error">
             <span>エラー</span>
@@ -121,8 +116,7 @@ export function UserTable({
 }
 
 const statusLabel: Record<ValidationStatus, string> = {
-  NEW: "新規",
-  UPDATE: "更新",
+  NEW: "登録可能",
   ERROR: "エラー",
 };
 

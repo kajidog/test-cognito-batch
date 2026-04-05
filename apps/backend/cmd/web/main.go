@@ -1,18 +1,12 @@
 // Web サーバーのエントリーポイント。
 //
 // GraphQL API を提供し、フロントエンドからのバッチ処理リクエストを受け付ける。
-// COGNITO_MODE=mock (デフォルト) の場合は Worker もインプロセスで起動する
-// (MockCognitoService がインメモリで状態を持つため同一プロセスで動作する必要がある)。
-// COGNITO_MODE=aws-import の場合は Worker を起動しない (別コンテナで実行される想定)。
 package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
-	"os"
-	"strings"
 
 	"cognito-batch-backend/db"
 	"cognito-batch-backend/internal/config"
@@ -41,27 +35,23 @@ func main() {
 
 	// --- 3. サービス層の組み立て ---
 	userService := service.NewUserService(userRepo)
-	validationService := service.NewValidationService(userRepo)
+	validationService := service.NewValidationService(userRepo, importQueueRepo)
 
 	s3Cfg := config.LoadS3Config()
 	s3Service := service.NewS3Service(s3Cfg)
 
 	jobCfg := config.LoadJobConfig()
-	cognitoService, err := newCognitoService(jobCfg)
+	cogCfg := config.LoadCognitoConfig()
+	cognitoService, err := service.NewAwsCognitoService(cogCfg)
 	if err != nil {
 		log.Fatalf("failed to initialize cognito service: %v", err)
 	}
 	jobService := service.NewJobService(jobCfg, userRepo, jobRepo, importQueueRepo, validationService, s3Service, cognitoService)
 
-	// --- 4. Worker の起動 (mock モード時のみ) ---
-	// MockCognitoService はインメモリで状態を持つため、同一プロセスで Worker を動かす必要がある。
-	// aws-import モードでは Worker は別コンテナで実行されるため、ここでは起動しない。
-	mode := strings.TrimSpace(os.Getenv("COGNITO_MODE"))
-	if mode == "" || mode == "mock" {
-		w := worker.New(jobService, jobCfg.PollInterval)
-		w.Start(context.Background())
-		log.Println("Worker started in-process (mock mode)")
-	}
+	// --- 4. Worker の起動 ---
+	w := worker.New(jobService, jobCfg.PollInterval)
+	w.Start(context.Background())
+	log.Println("Worker started in-process")
 
 	// --- 5. HTTP サーバー設定 ---
 	r := chi.NewRouter()
@@ -86,19 +76,4 @@ func main() {
 
 	log.Println("Server running on :8080")
 	log.Fatal(http.ListenAndServe(":8080", r))
-}
-
-// newCognitoService は環境変数 COGNITO_MODE に応じて Cognito サービスの実装を切り替える。
-func newCognitoService(jobCfg config.JobConfig) (service.CognitoService, error) {
-	mode := strings.TrimSpace(os.Getenv("COGNITO_MODE"))
-	if mode == "" || mode == "mock" {
-		return service.NewMockCognitoService(config.MockCognitoConfig{
-			StepDelay: jobCfg.ProcessDelay,
-		}), nil
-	}
-	if mode == "aws-import" {
-		cogCfg := config.LoadCognitoConfig()
-		return service.NewAwsCognitoService(cogCfg)
-	}
-	return nil, fmt.Errorf("unsupported COGNITO_MODE: %s", mode)
 }

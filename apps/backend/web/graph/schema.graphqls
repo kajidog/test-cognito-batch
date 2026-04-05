@@ -11,6 +11,7 @@ enum JobStatus {
   RUNNING
   COMPLETED
   FAILED
+  CANCELED
 }
 
 type JobError {
@@ -36,7 +37,6 @@ type Job {
 
 enum ValidationRowStatus {
   NEW
-  UPDATE
   ERROR
 }
 
@@ -53,7 +53,6 @@ type RowValidation {
 
 type ValidationSummary {
   newCount: Int!
-  updateCount: Int!
   errorCount: Int!
 }
 
@@ -78,5 +77,6 @@ type Query {
 }
 
 type Mutation {
-  startBatchUpsert(inputs: [UserInput!]!): Job!
+  startBatchCreate(inputs: [UserInput!]!): Job!
+  cancelJob(id: ID!): Job!
 }

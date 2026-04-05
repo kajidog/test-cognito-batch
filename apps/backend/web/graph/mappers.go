@@ -2,8 +2,8 @@ package graph
 
 import (
 	"cognito-batch-backend/db"
-	"cognito-batch-backend/web/graph/model"
 	"cognito-batch-backend/service"
+	"cognito-batch-backend/web/graph/model"
 )
 
 func toGraphQLUsers(users []db.User) []*model.User {
@@ -44,9 +44,8 @@ func toGraphQLValidationResult(result *service.ValidationResult) *model.Validati
 
 	return &model.ValidationResult{
 		Summary: &model.ValidationSummary{
-			NewCount:    result.Summary.NewCount,
-			UpdateCount: result.Summary.UpdateCount,
-			ErrorCount:  result.Summary.ErrorCount,
+			NewCount:   result.Summary.NewCount,
+			ErrorCount: result.Summary.ErrorCount,
 		},
 		Rows: rows,
 	}

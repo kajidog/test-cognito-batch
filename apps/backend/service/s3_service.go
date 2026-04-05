@@ -36,3 +36,8 @@ func (s *S3Service) ObjectKey(parts ...string) string {
 func (s *S3Service) Upload(ctx context.Context, objectKey string, data []byte, contentType string) error {
 	return s.client.PutObject(ctx, s.bucket, objectKey, data, contentType)
 }
+
+// Delete は指定されたオブジェクトキーを削除する。
+func (s *S3Service) Delete(ctx context.Context, objectKey string) error {
+	return s.client.DeleteObject(ctx, s.bucket, objectKey)
+}

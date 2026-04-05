@@ -36,7 +36,7 @@ func main() {
 	importQueueRepo := repository.NewGormImportQueueRepository(database)
 
 	// --- 3. サービス層の組み立て ---
-	validationService := service.NewValidationService(userRepo)
+	validationService := service.NewValidationService(userRepo, importQueueRepo)
 
 	s3Cfg := config.LoadS3Config()
 	s3Service := service.NewS3Service(s3Cfg)

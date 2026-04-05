@@ -102,6 +102,29 @@ func (s *AwsCognitoService) DescribeImport(ctx context.Context, providerJobID st
 	}, nil
 }
 
+func (s *AwsCognitoService) StopImport(ctx context.Context, providerJobID string) error {
+	return s.client.StopUserImportJob(ctx, providerJobID)
+}
+
+func (s *AwsCognitoService) DeleteUsers(ctx context.Context, usernames []string) error {
+	var firstErr error
+	seen := make(map[string]struct{}, len(usernames))
+	for _, username := range usernames {
+		username = strings.TrimSpace(username)
+		if username == "" {
+			continue
+		}
+		if _, ok := seen[username]; ok {
+			continue
+		}
+		seen[username] = struct{}{}
+		if err := s.client.AdminDeleteUser(ctx, username); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
 // ResolveImportedUsers は import 完了後に username でユーザーを個別取得する。
 func (s *AwsCognitoService) ResolveImportedUsers(ctx context.Context, usernames []string) ([]ImportedUser, error) {
 	results := make([]ImportedUser, 0, len(usernames))
