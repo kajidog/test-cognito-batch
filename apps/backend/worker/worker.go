@@ -11,7 +11,7 @@ import (
 
 // PendingImportProcessor は未完了の Cognito import ジョブを処理するインターフェース。
 type PendingImportProcessor interface {
-	ProcessPendingImports()
+	ProcessPendingImports(ctx context.Context)
 }
 
 // Worker はバックグラウンドでポーリングを行うワーカー。
@@ -40,7 +40,7 @@ func (w *Worker) Start(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				w.processor.ProcessPendingImports()
+				w.processor.ProcessPendingImports(ctx)
 			}
 		}
 	}()

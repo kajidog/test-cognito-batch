@@ -1,4 +1,4 @@
-package service
+package config
 
 import (
 	"os"
@@ -28,14 +28,8 @@ type CognitoConfig struct {
 	SecretKey             string
 }
 
-// MockCognitoConfig はモック Cognito サービスの設定。
-type MockCognitoConfig struct {
-	StepDelay time.Duration
-}
-
 // JobConfig はバッチジョブ処理の設定。
 type JobConfig struct {
-	ProcessDelay time.Duration
 	PollInterval time.Duration
 }
 
@@ -68,7 +62,6 @@ func LoadCognitoConfig() CognitoConfig {
 // LoadJobConfig は環境変数からジョブ処理設定を読み込む。
 func LoadJobConfig() JobConfig {
 	return JobConfig{
-		ProcessDelay: parseDurationMs("JOB_STEP_DELAY_MS", 1500),
 		PollInterval: parseDurationMs("COGNITO_IMPORT_POLL_INTERVAL_MS", 2000),
 	}
 }

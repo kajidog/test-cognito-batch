@@ -68,9 +68,8 @@ type ValidationResult struct {
 }
 
 type ValidationSummary struct {
-	NewCount    int `json:"newCount"`
-	UpdateCount int `json:"updateCount"`
-	ErrorCount  int `json:"errorCount"`
+	NewCount   int `json:"newCount"`
+	ErrorCount int `json:"errorCount"`
 }
 
 type JobStatus string
@@ -80,6 +79,7 @@ const (
 	JobStatusRunning   JobStatus = "RUNNING"
 	JobStatusCompleted JobStatus = "COMPLETED"
 	JobStatusFailed    JobStatus = "FAILED"
+	JobStatusCanceled  JobStatus = "CANCELED"
 )
 
 var AllJobStatus = []JobStatus{
@@ -87,11 +87,12 @@ var AllJobStatus = []JobStatus{
 	JobStatusRunning,
 	JobStatusCompleted,
 	JobStatusFailed,
+	JobStatusCanceled,
 }
 
 func (e JobStatus) IsValid() bool {
 	switch e {
-	case JobStatusQueued, JobStatusRunning, JobStatusCompleted, JobStatusFailed:
+	case JobStatusQueued, JobStatusRunning, JobStatusCompleted, JobStatusFailed, JobStatusCanceled:
 		return true
 	}
 	return false
@@ -135,20 +136,18 @@ func (e JobStatus) MarshalJSON() ([]byte, error) {
 type ValidationRowStatus string
 
 const (
-	ValidationRowStatusNew    ValidationRowStatus = "NEW"
-	ValidationRowStatusUpdate ValidationRowStatus = "UPDATE"
-	ValidationRowStatusError  ValidationRowStatus = "ERROR"
+	ValidationRowStatusNew   ValidationRowStatus = "NEW"
+	ValidationRowStatusError ValidationRowStatus = "ERROR"
 )
 
 var AllValidationRowStatus = []ValidationRowStatus{
 	ValidationRowStatusNew,
-	ValidationRowStatusUpdate,
 	ValidationRowStatusError,
 }
 
 func (e ValidationRowStatus) IsValid() bool {
 	switch e {
-	case ValidationRowStatusNew, ValidationRowStatusUpdate, ValidationRowStatusError:
+	case ValidationRowStatusNew, ValidationRowStatusError:
 		return true
 	}
 	return false

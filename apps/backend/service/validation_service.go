@@ -2,24 +2,24 @@ package service
 
 import (
 	"cognito-batch-backend/db"
+	"cognito-batch-backend/internal/repository"
+	"context"
+	"encoding/json"
 	"regexp"
 	"strings"
 	"unicode/utf8"
-
-	"gorm.io/gorm"
 )
 
 // バリデーション用の正規表現パターン
-var emailPattern = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)    // 簡易的なメールアドレス形式チェック
-var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9._@+-]{3,64}$`)  // Cognito の username 制約に準拠
+var emailPattern = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)  // 簡易的なメールアドレス形式チェック
+var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9._@+-]{3,64}$`) // Cognito の username 制約に準拠
 
 // ValidationStatus は各行のバリデーション結果を表す。
 type ValidationStatus string
 
 const (
-	ValidationStatusNew    ValidationStatus = "NEW"    // DB に存在しない → Cognito import 対象
-	ValidationStatusUpdate ValidationStatus = "UPDATE" // DB に既存 → ローカル更新のみ
-	ValidationStatusError  ValidationStatus = "ERROR"  // バリデーションエラーあり → スキップ
+	ValidationStatusNew   ValidationStatus = "NEW"   // DB / 実行中ジョブに存在しない → Cognito import 対象
+	ValidationStatusError ValidationStatus = "ERROR" // バリデーションエラーあり → スキップ
 )
 
 type ValidationFieldError struct {
@@ -28,15 +28,14 @@ type ValidationFieldError struct {
 }
 
 type ValidationRow struct {
-	RowNumber int                    // CSV の行番号 (2始まり)
+	RowNumber int // CSV の行番号 (2始まり)
 	Status    ValidationStatus
 	Errors    []ValidationFieldError // エラーがなければ空
 }
 
 type ValidationSummary struct {
-	NewCount    int // 新規ユーザー数
-	UpdateCount int // 更新対象ユーザー数
-	ErrorCount  int // エラー行数
+	NewCount   int // 新規ユーザー数
+	ErrorCount int // エラー行数
 }
 
 type ValidationResult struct {
@@ -45,20 +44,24 @@ type ValidationResult struct {
 }
 
 type ValidationService struct {
-	db *gorm.DB
+	userRepo        repository.UserRepository
+	importQueueRepo repository.ImportQueueRepository
 }
 
-func NewValidationService(database *gorm.DB) *ValidationService {
-	return &ValidationService{db: database}
+func NewValidationService(userRepo repository.UserRepository, importQueueRepo repository.ImportQueueRepository) *ValidationService {
+	return &ValidationService{
+		userRepo:        userRepo,
+		importQueueRepo: importQueueRepo,
+	}
 }
 
 // ValidateUsers は CSV から読み込んだユーザー一覧を一括バリデーションする。
 //
 // 処理の流れ:
-//   1. CSV 内での重複チェック用にカウントマップを構築 (name, username)
-//   2. DB から既存ユーザーを username で一括取得 (UPDATE/NEW の判定に使う)
-//   3. 各行に対してフィールドバリデーション + 重複チェック + 存在チェックを実行
-func (s *ValidationService) ValidateUsers(inputs []db.User) (*ValidationResult, error) {
+//  1. CSV 内での重複チェック用にカウントマップを構築 (name, username)
+//  2. DB と実行中ジョブから既存 username を収集
+//  3. 各行に対してフィールドバリデーション + 重複チェック + 存在チェックを実行
+func (s *ValidationService) ValidateUsers(ctx context.Context, inputs []db.User) (*ValidationResult, error) {
 	result := &ValidationResult{
 		Rows: make([]ValidationRow, 0, len(inputs)),
 	}
@@ -90,18 +93,21 @@ func (s *ValidationService) ValidateUsers(inputs []db.User) (*ValidationResult, 
 	}
 
 	// --- ステップ 2: DB から既存ユーザーを一括取得 ---
-	// username が DB に存在すれば UPDATE、存在しなければ NEW と判定する。
-	// username を基準にすることで、Cognito の import/resolve と同じキーで一貫性を保つ。
 	existingUsersByUsername := make(map[string]db.User, len(usernames))
 	if len(usernames) > 0 {
-		var existingUsers []db.User
-		if err := s.db.Where("username IN ?", usernames).Find(&existingUsers).Error; err != nil {
+		existingUsers, err := s.userRepo.FindByUsernames(ctx, usernames)
+		if err != nil {
 			return nil, err
 		}
 
 		for _, user := range existingUsers {
 			existingUsersByUsername[user.Username] = user
 		}
+	}
+
+	runningUsernames, err := s.runningJobUsernames(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	// --- ステップ 3: 各行のバリデーション ---
@@ -178,18 +184,59 @@ func (s *ValidationService) ValidateUsers(inputs []db.User) (*ValidationResult, 
 			continue
 		}
 
-		// UPDATE/NEW の判定軸は username に固定する。
-		// name ではなく username を使うことで、Cognito 側との突合キーを一貫させる。
 		if _, exists := existingUsersByUsername[username]; exists {
-			row.Status = ValidationStatusUpdate
-			result.Summary.UpdateCount++
-		} else {
-			row.Status = ValidationStatusNew
-			result.Summary.NewCount++
+			row.Errors = append(row.Errors, ValidationFieldError{
+				Field:   "username",
+				Message: "username は既に登録済みです",
+			})
 		}
 
+		if _, exists := runningUsernames[username]; exists {
+			row.Errors = append(row.Errors, ValidationFieldError{
+				Field:   "username",
+				Message: "username は実行中のジョブで使用中です",
+			})
+		}
+
+		if len(row.Errors) > 0 {
+			row.Status = ValidationStatusError
+			result.Summary.ErrorCount++
+			result.Rows = append(result.Rows, row)
+			continue
+		}
+
+		row.Status = ValidationStatusNew
+		result.Summary.NewCount++
 		result.Rows = append(result.Rows, row)
 	}
 
 	return result, nil
+}
+
+func (s *ValidationService) runningJobUsernames(ctx context.Context) (map[string]struct{}, error) {
+	running := make(map[string]struct{})
+	if s.importQueueRepo == nil {
+		return running, nil
+	}
+
+	queues, err := s.importQueueRepo.ListActive(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, queue := range queues {
+		var payload queuedImportPayload
+		if err := json.Unmarshal([]byte(queue.Payload), &payload); err != nil {
+			return nil, err
+		}
+		for _, user := range payload.Users {
+			username := strings.TrimSpace(user.Username)
+			if username == "" {
+				continue
+			}
+			running[username] = struct{}{}
+		}
+	}
+
+	return running, nil
 }
